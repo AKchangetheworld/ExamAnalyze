@@ -16,46 +16,79 @@ export class DeepSeekService {
   // OCR功能：识别试卷图片中的文字
   async extractTextFromImage(base64Image: string): Promise<string> {
     try {
-      const response = await deepseek.chat.completions.create({
-        model: "deepseek-chat",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "请仔细识别这张试卷图片中的所有文字内容，包括题目、答案、批注等。请按照原文准确输出，保持格式和顺序。"
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`
-                }
-              }
-            ],
-          },
-        ],
-        max_tokens: 4000,
-      });
+      // 验证base64图片格式
+      if (!base64Image || !base64Image.trim()) {
+        throw new Error("图片数据为空");
+      }
 
-      return response.choices[0].message.content || "";
+      // 移除可能的数据URL前缀
+      const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
+      
+      console.log("开始OCR文字识别...");
+      
+      try {
+        // 首先尝试使用DeepSeek的视觉能力
+        const response = await deepseek.chat.completions.create({
+          model: "deepseek-chat",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "请仔细识别这张试卷图片中的所有文字内容，包括题目、答案、批注等。请保持原始格式和布局，准确转录所有文字。如果图片中有数学公式、符号或特殊格式，请尽可能准确地描述。"
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:image/jpeg;base64,${cleanBase64}`
+                  }
+                }
+              ],
+            },
+          ],
+          max_tokens: 4000,
+          temperature: 0.1, // 降低温度以提高一致性
+        });
+
+        const extractedText = response.choices[0].message.content || "";
+        console.log("OCR识别完成，提取文字长度:", extractedText.length);
+        
+        if (!extractedText.trim()) {
+          throw new Error("未能从图片中识别出文字内容");
+        }
+
+        return extractedText;
+      } catch (visionError) {
+        console.log("视觉API调用失败，尝试备用方案:", visionError);
+        
+        // 如果视觉API不可用，直接抛出OCR不可用错误
+        throw new Error("OCR服务暂不可用。DeepSeek视觉API需要支持图片处理的模型。请稍后重试或联系管理员配置其他OCR服务（如Google Vision API、AWS Textract等）。");
+      }
     } catch (error) {
       console.error("OCR extraction failed:", error);
       
       // 提供更具体的错误信息
       if (error instanceof Error) {
-        if (error.message.includes('401')) {
+        if (error.message.includes('OCR服务暂不可用')) {
+          throw error; // 保持OCR不可用错误不变
+        } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
           throw new Error("API密钥无效，请检查DeepSeek API配置");
-        } else if (error.message.includes('429')) {
+        } else if (error.message.includes('429') || error.message.includes('rate limit')) {
           throw new Error("API调用频率过高，请稍后重试");
-        } else if (error.message.includes('400')) {
-          throw new Error("图片格式不支持或数据无效");
+        } else if (error.message.includes('400') || error.message.includes('Bad Request')) {
+          throw new Error("图片格式不支持或数据无效。请使用JPEG或PNG格式的图片");
+        } else if (error.message.includes('model') || error.message.includes('vision')) {
+          throw new Error("DeepSeek视觉模型暂不可用，请稍后重试");
+        } else if (error.message.includes('未能从图片中识别')) {
+          throw error; // 直接抛出自定义错误
         }
       }
       
       throw new Error("文字识别失败，请检查图片质量或稍后重试");
     }
   }
+
 
   // AI分析功能：分析试卷内容并生成详细反馈
   async analyzeExamPaper(extractedText: string): Promise<AnalysisResult> {

@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import multer from "multer";
 import sharp from "sharp";
 import { storage } from "./storage";
-import { deepSeekService } from "./deepseek";
+import { deepSeekService, DeepSeekService } from "./deepseek";
 // import { insertExamPaperSchema } from "@shared/schema";
 
 // 配置multer用于文件上传
@@ -74,6 +74,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "缺少有效的图片数据" });
       }
 
+      // 限制图片大小（4MB base64）以防止内存问题
+      if (base64Image.length > 4 * 1024 * 1024) {
+        return res.status(413).json({ error: "图片过大，请使用小于4MB的图片" });
+      }
+
       // 获取试卷记录
       const examPaper = await storage.getExamPaper(id);
       if (!examPaper) {
@@ -86,7 +91,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         // 使用DeepSeek进行OCR和分析
         const result = await deepSeekService.processExamPaper(base64Image);
-
+        
         // 更新试卷记录
         const updatedExamPaper = await storage.updateExamPaper(id, {
           originalText: result.extractedText,
@@ -103,8 +108,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
       } catch (aiError) {
-        // AI处理失败，更新状态
+        // AI处理失败，更新状态为错误
         await storage.updateExamPaper(id, { status: "error" });
+        
+        // 检查是否是OCR服务不可用错误
+        if (aiError instanceof Error && aiError.message.includes('OCR服务暂不可用')) {
+          return res.status(503).json({ 
+            error: aiError.message,
+            code: 'OCR_UNAVAILABLE'
+          });
+        }
+        
         throw aiError;
       }
 
@@ -159,6 +173,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+
+  // 测试OCR功能的端点（仅开发环境）
+  if (process.env.NODE_ENV === 'development') {
+    app.post("/api/test-ocr", async (req, res) => {
+      try {
+        if (!req.body) {
+          return res.status(400).json({ error: "请求体为空" });
+        }
+
+        const { base64Image } = req.body;
+
+        if (!base64Image || typeof base64Image !== 'string') {
+          return res.status(400).json({ error: "缺少有效的图片数据" });
+        }
+
+        // 限制图片大小（1MB base64）
+        if (base64Image.length > 1024 * 1024) {
+          return res.status(413).json({ error: "图片过大，请使用小于1MB的图片" });
+        }
+
+        console.log("开始测试OCR功能...");
+        // 重用已有的deepSeekService实例
+        const extractedText = await deepSeekService.extractTextFromImage(base64Image);
+
+        res.json({ 
+          success: true, 
+          extractedText,
+          textLength: extractedText.length,
+          message: "OCR识别成功"
+        });
+      } catch (error) {
+        console.error("OCR test failed:", error);
+        
+        // 根据错误类型返回不同状态码
+        if (error instanceof Error && error.message.includes('OCR服务暂不可用')) {
+          res.status(503).json({ 
+            error: error.message,
+            success: false,
+            code: 'OCR_UNAVAILABLE'
+          });
+        } else {
+          res.status(500).json({ 
+            error: error instanceof Error ? error.message : "OCR测试失败",
+            success: false
+          });
+        }
+      }
+    });
+  }
 
   const httpServer = createServer(app);
   return httpServer;
