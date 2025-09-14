@@ -1,0 +1,170 @@
+import OpenAI from "openai";
+import { AnalysisResult } from "@shared/schema";
+
+// 检查API密钥是否存在
+if (!process.env.DEEPSEEK_API_KEY) {
+  console.error("DEEPSEEK_API_KEY 环境变量未设置");
+}
+
+// DeepSeek API uses OpenAI-compatible interface
+const deepseek = new OpenAI({
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: "https://api.deepseek.com"
+});
+
+export class DeepSeekService {
+  // OCR功能：识别试卷图片中的文字
+  async extractTextFromImage(base64Image: string): Promise<string> {
+    try {
+      const response = await deepseek.chat.completions.create({
+        model: "deepseek-chat",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "请仔细识别这张试卷图片中的所有文字内容，包括题目、答案、批注等。请按照原文准确输出，保持格式和顺序。"
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`
+                }
+              }
+            ],
+          },
+        ],
+        max_tokens: 4000,
+      });
+
+      return response.choices[0].message.content || "";
+    } catch (error) {
+      console.error("OCR extraction failed:", error);
+      
+      // 提供更具体的错误信息
+      if (error instanceof Error) {
+        if (error.message.includes('401')) {
+          throw new Error("API密钥无效，请检查DeepSeek API配置");
+        } else if (error.message.includes('429')) {
+          throw new Error("API调用频率过高，请稍后重试");
+        } else if (error.message.includes('400')) {
+          throw new Error("图片格式不支持或数据无效");
+        }
+      }
+      
+      throw new Error("文字识别失败，请检查图片质量或稍后重试");
+    }
+  }
+
+  // AI分析功能：分析试卷内容并生成详细反馈
+  async analyzeExamPaper(extractedText: string): Promise<AnalysisResult> {
+    try {
+      const response = await deepseek.chat.completions.create({
+        model: "deepseek-reasoner", // 使用推理模型获得更好的分析质量
+        messages: [
+          {
+            role: "system",
+            content: `你是一位专业的教师，负责批改学生试卷。请分析以下试卷内容，并提供详细的批改反馈。
+
+要求：
+1. 评估整体表现，给出分数（假设满分100分）和等级（A+, A, B+, B, C+, C, D）
+2. 列出学生的优点（strengths）
+3. 列出需要改进的地方（improvements）
+4. 提供详细的点评（detailedFeedback）
+5. 逐题分析（questionAnalysis）
+
+请以JSON格式返回结果，结构如下：
+{
+  "overallScore": 数字,
+  "maxScore": 100,
+  "grade": "等级",
+  "feedback": {
+    "strengths": ["优点1", "优点2", "优点3"],
+    "improvements": ["改进点1", "改进点2", "改进点3"],
+    "detailedFeedback": "详细点评文本"
+  },
+  "questionAnalysis": [
+    {
+      "questionNumber": 题号,
+      "score": 得分,
+      "maxScore": 满分,
+      "feedback": "单题反馈"
+    }
+  ]
+}`
+          },
+          {
+            role: "user",
+            content: `请分析以下试卷内容：\n\n${extractedText}`
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 4000,
+      });
+
+      const content = response.choices[0].message.content;
+      if (!content) {
+        throw new Error("AI分析返回空结果");
+      }
+
+      const result = JSON.parse(content);
+      
+      // 验证返回结果的结构
+      if (!result.overallScore || !result.grade || !result.feedback) {
+        throw new Error("AI分析结果格式不正确");
+      }
+
+      return {
+        overallScore: Math.max(0, Math.min(100, result.overallScore)),
+        maxScore: 100,
+        grade: result.grade,
+        feedback: {
+          strengths: result.feedback.strengths || [],
+          improvements: result.feedback.improvements || [],
+          detailedFeedback: result.feedback.detailedFeedback || ""
+        },
+        questionAnalysis: result.questionAnalysis || []
+      };
+
+    } catch (error) {
+      console.error("Analysis failed:", error);
+      
+      // 提供更具体的错误信息
+      if (error instanceof Error) {
+        if (error.message.includes('401')) {
+          throw new Error("API密钥无效，请检查DeepSeek API配置");
+        } else if (error.message.includes('429')) {
+          throw new Error("API调用频率过高，请稍后重试");
+        } else if (error.message.includes('400')) {
+          throw new Error("分析请求格式错误");
+        }
+      }
+      
+      throw new Error("AI分析失败，请稍后重试");
+    }
+  }
+
+  // 综合处理：从图片到分析结果的完整流程
+  async processExamPaper(base64Image: string): Promise<{
+    extractedText: string;
+    analysisResult: AnalysisResult;
+  }> {
+    // 第一步：OCR识别
+    const extractedText = await this.extractTextFromImage(base64Image);
+    
+    if (!extractedText.trim()) {
+      throw new Error("未能识别到试卷内容，请确保图片清晰且包含文字");
+    }
+
+    // 第二步：AI分析
+    const analysisResult = await this.analyzeExamPaper(extractedText);
+
+    return {
+      extractedText,
+      analysisResult
+    };
+  }
+}
+
+export const deepSeekService = new DeepSeekService();

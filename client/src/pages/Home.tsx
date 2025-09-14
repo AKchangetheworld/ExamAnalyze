@@ -7,6 +7,8 @@ import ProgressIndicator from "@/components/ProgressIndicator";
 import ResultsCard from "@/components/ResultsCard";
 import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
+import { apiService } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 type AppState = "idle" | "uploading" | "processing" | "completed" | "error";
 
@@ -19,91 +21,155 @@ export default function Home() {
     message: "准备上传..."
   });
   const [results, setResults] = useState<AnalysisResult | null>(null);
+  const [uploadedData, setUploadedData] = useState<{id: string, base64Image: string} | null>(null);
+  const { toast } = useToast();
 
-  // todo: remove mock functionality
-  const mockResults: AnalysisResult = {
-    overallScore: 85,
-    maxScore: 100,
-    grade: 'B+',
-    feedback: {
-      strengths: [
-        '数学计算准确，基础知识掌握扎实',
-        '解题思路清晰，步骤完整',
-        '字迹工整，答题规范'
-      ],
-      improvements: [
-        '应用题理解需要加强',
-        '几何证明过程可以更详细',
-        '检查习惯需要培养'
-      ],
-      detailedFeedback: '本次考试整体表现良好，基础知识掌握扎实，计算能力较强。在代数运算方面表现出色，但在几何证明和应用题理解方面还需要进一步加强。建议多做类似的练习题，提高空间想象能力和逻辑推理能力。'
-    },
-    questionAnalysis: [
-      {
-        questionNumber: 1,
-        score: 8,
-        maxScore: 10,
-        feedback: '基础计算正确，但过程略显简单，建议写出详细步骤'
-      },
-      {
-        questionNumber: 2,
-        score: 9,
-        maxScore: 10,
-        feedback: '解题思路正确，答案准确，表现优秀'
-      },
-      {
-        questionNumber: 3,
-        score: 6,
-        maxScore: 10,
-        feedback: '几何证明逻辑有误，需要重新理解定理条件'
-      }
-    ]
-  };
-
-  const simulateProcessing = async () => {
-    const steps: Array<{step: ProcessingStep, duration: number, message: string}> = [
-      { step: "upload", duration: 1000, message: "正在上传试卷..." },
-      { step: "ocr", duration: 2000, message: "正在识别试卷内容..." },
-      { step: "analysis", duration: 3000, message: "AI正在分析试卷..." },
-      { step: "results", duration: 500, message: "生成分析报告..." }
-    ];
-
-    for (const { step, duration, message } of steps) {
-      setCurrentStep(step);
-      setProgress({ step, progress: 0, message });
+  // 真实的AI处理流程
+  const processExamPaper = async (id: string, base64Image: string) => {
+    try {
+      // 步骤1：上传完成，开始OCR
+      setCurrentStep("ocr");
+      setProgress({ step: "ocr", progress: 0, message: "正在识别试卷内容..." });
       
-      // Simulate progress for current step
-      for (let i = 0; i <= 100; i += 10) {
+      for (let i = 0; i <= 100; i += 20) {
         setProgress(prev => ({ ...prev, progress: i }));
-        await new Promise(resolve => setTimeout(resolve, duration / 10));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    }
 
-    setResults(mockResults);
-    setAppState("completed");
+      // 步骤2：开始AI分析
+      setCurrentStep("analysis");
+      setProgress({ step: "analysis", progress: 0, message: "AI正在分析试卷..." });
+      
+      for (let i = 0; i <= 80; i += 20) {
+        setProgress(prev => ({ ...prev, progress: i }));
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // 调用真实API进行处理
+      const result = await apiService.processExamPaper(id, base64Image);
+      
+      setProgress({ step: "analysis", progress: 100, message: "分析完成" });
+      
+      // 步骤3：生成结果
+      setCurrentStep("results");
+      setProgress({ step: "results", progress: 100, message: "生成分析报告..." });
+      
+      setResults(result.analysisResult);
+      setAppState("completed");
+
+    } catch (error) {
+      console.error('Processing failed:', error);
+      toast({
+        title: "处理失败",
+        description: error instanceof Error ? error.message : "未知错误，请重试",
+        variant: "destructive",
+      });
+      setAppState("idle");
+    }
   };
 
   const handleFileSelect = async (file: File) => {
     console.log('File selected:', file.name);
     setAppState("processing");
-    await simulateProcessing();
+    setCurrentStep("upload");
+    setProgress({ step: "upload", progress: 0, message: "正在上传试卷..." });
+
+    try {
+      // 真实文件上传
+      for (let i = 0; i <= 100; i += 25) {
+        setProgress(prev => ({ ...prev, progress: i }));
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const uploadResult = await apiService.uploadFile(file);
+      setUploadedData({ id: uploadResult.id, base64Image: uploadResult.base64Image });
+      
+      // 开始处理
+      await processExamPaper(uploadResult.id, uploadResult.base64Image);
+
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast({
+        title: "上传失败", 
+        description: error instanceof Error ? error.message : "未知错误，请重试",
+        variant: "destructive",
+      });
+      setAppState("idle");
+    }
   };
+
 
   const handleStartOver = () => {
     setAppState("idle");
     setCurrentStep("upload");
     setProgress({ step: "upload", progress: 0, message: "准备上传..." });
     setResults(null);
+    setUploadedData(null);
   };
 
   const handleDownload = () => {
-    console.log('下载分析报告');
-    // todo: remove mock functionality - implement real download
+    if (!results) return;
+    
+    const reportContent = `试卷分析报告
+===============
+
+总分：${results.overallScore}/${results.maxScore} (${results.grade})
+
+优点：
+${results.feedback.strengths.map(s => `• ${s}`).join('\n')}
+
+改进建议：
+${results.feedback.improvements.map(i => `• ${i}`).join('\n')}
+
+详细点评：
+${results.feedback.detailedFeedback}
+
+题目分析：
+${results.questionAnalysis.map(qa => `第${qa.questionNumber}题: ${qa.score}/${qa.maxScore}分 - ${qa.feedback}`).join('\n')}
+`;
+
+    const blob = new Blob([reportContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '试卷分析报告.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "下载成功",
+      description: "分析报告已保存到下载文件夹",
+    });
   };
 
-  const handleShare = () => {
-    console.log('分享分析结果');
-    // todo: remove mock functionality - implement real sharing
+  const handleShare = async () => {
+    if (!results) return;
+    
+    const shareText = `我的试卷分析结果：${results.overallScore}/${results.maxScore}分 (${results.grade})`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: '试卷分析结果',
+          text: shareText,
+        });
+      } catch (error) {
+        console.log('分享取消或失败');
+      }
+    } else {
+      // 备选方案：复制到剪贴板
+      try {
+        await navigator.clipboard.writeText(shareText);
+        toast({
+          title: "已复制到剪贴板",
+          description: "可以粘贴到其他应用分享结果",
+        });
+      } catch (error) {
+        console.log('复制失败');
+      }
+    }
   };
 
   return (
