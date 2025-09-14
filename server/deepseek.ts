@@ -93,6 +93,13 @@ export class DeepSeekService {
   // AI分析功能：分析试卷内容并生成详细反馈
   async analyzeExamPaper(extractedText: string): Promise<AnalysisResult> {
     try {
+      // 验证输入文本
+      if (!extractedText || !extractedText.trim()) {
+        throw new Error("试卷文本内容为空，无法进行分析");
+      }
+
+      console.log("开始AI分析，文本长度:", extractedText.length);
+
       const response = await deepseek.chat.completions.create({
         model: "deepseek-reasoner", // 使用推理模型获得更好的分析质量
         messages: [
@@ -134,6 +141,7 @@ export class DeepSeekService {
         ],
         response_format: { type: "json_object" },
         max_tokens: 4000,
+        temperature: 0.2, // 降低温度以提高一致性
       });
 
       const content = response.choices[0].message.content;
@@ -141,24 +149,35 @@ export class DeepSeekService {
         throw new Error("AI分析返回空结果");
       }
 
-      const result = JSON.parse(content);
+      let result;
+      try {
+        result = JSON.parse(content);
+      } catch (parseError) {
+        console.error("JSON解析失败:", content);
+        throw new Error("AI返回的结果格式不正确，无法解析为JSON");
+      }
       
       // 验证返回结果的结构
-      if (!result.overallScore || !result.grade || !result.feedback) {
-        throw new Error("AI分析结果格式不正确");
+      if (typeof result.overallScore !== 'number' || !result.grade || !result.feedback) {
+        console.error("AI分析结果结构验证失败:", result);
+        throw new Error("AI分析结果格式不正确，缺少必要字段");
       }
 
-      return {
-        overallScore: Math.max(0, Math.min(100, result.overallScore)),
+      // 构建并验证最终结果
+      const analysisResult: AnalysisResult = {
+        overallScore: Math.max(0, Math.min(100, Math.round(result.overallScore))),
         maxScore: 100,
         grade: result.grade,
         feedback: {
-          strengths: result.feedback.strengths || [],
-          improvements: result.feedback.improvements || [],
-          detailedFeedback: result.feedback.detailedFeedback || ""
+          strengths: Array.isArray(result.feedback.strengths) ? result.feedback.strengths : [],
+          improvements: Array.isArray(result.feedback.improvements) ? result.feedback.improvements : [],
+          detailedFeedback: result.feedback.detailedFeedback || "分析完成，但未生成详细反馈"
         },
-        questionAnalysis: result.questionAnalysis || []
+        questionAnalysis: Array.isArray(result.questionAnalysis) ? result.questionAnalysis : []
       };
+
+      console.log("AI分析完成，总分:", analysisResult.overallScore);
+      return analysisResult;
 
     } catch (error) {
       console.error("Analysis failed:", error);

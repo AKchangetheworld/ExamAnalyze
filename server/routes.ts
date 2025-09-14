@@ -174,8 +174,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 测试OCR功能的端点（仅开发环境）
+  // 测试AI分析功能的端点（仅开发环境）
   if (process.env.NODE_ENV === 'development') {
+    app.post("/api/test-analysis", async (req, res) => {
+      try {
+        if (!req.body) {
+          return res.status(400).json({ error: "请求体为空" });
+        }
+
+        const { extractedText } = req.body;
+
+        if (!extractedText || typeof extractedText !== 'string') {
+          return res.status(400).json({ error: "缺少有效的试卷文本内容" });
+        }
+
+        // 限制文本长度（50KB）
+        if (extractedText.length > 50 * 1024) {
+          return res.status(413).json({ error: "文本过长，请使用小于50KB的文本" });
+        }
+
+        console.log("开始测试AI分析功能...");
+        const analysisResult = await deepSeekService.analyzeExamPaper(extractedText);
+
+        res.json({ 
+          success: true, 
+          analysisResult,
+          message: "AI分析成功"
+        });
+      } catch (error) {
+        console.error("AI analysis test failed:", error);
+        
+        // 根据错误类型返回不同状态码
+        if (error instanceof Error) {
+          if (error.message.includes('API密钥无效')) {
+            res.status(401).json({ 
+              error: error.message,
+              success: false,
+              code: 'INVALID_API_KEY'
+            });
+          } else if (error.message.includes('API调用频率')) {
+            res.status(429).json({ 
+              error: error.message,
+              success: false,
+              code: 'RATE_LIMIT'
+            });
+          } else {
+            res.status(500).json({ 
+              error: error.message,
+              success: false
+            });
+          }
+        } else {
+          res.status(500).json({ 
+            error: "AI分析测试失败",
+            success: false
+          });
+        }
+      }
+    });
+
+    // 测试OCR功能的端点（仅开发环境）
     app.post("/api/test-ocr", async (req, res) => {
       try {
         if (!req.body) {
