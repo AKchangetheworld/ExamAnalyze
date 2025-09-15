@@ -7,6 +7,7 @@ import ProgressIndicator from "@/components/ProgressIndicator";
 import ResultsCard from "@/components/ResultsCard";
 import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 type AppState = "idle" | "uploading" | "processing" | "completed" | "error";
 
@@ -19,74 +20,116 @@ export default function Home() {
     message: "准备上传..."
   });
   const [results, setResults] = useState<AnalysisResult | null>(null);
+  const [examPaperId, setExamPaperId] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  // todo: remove mock functionality
-  const mockResults: AnalysisResult = {
-    overallScore: 85,
-    maxScore: 100,
-    grade: 'B+',
-    feedback: {
-      strengths: [
-        '数学计算准确，基础知识掌握扎实',
-        '解题思路清晰，步骤完整',
-        '字迹工整，答题规范'
-      ],
-      improvements: [
-        '应用题理解需要加强',
-        '几何证明过程可以更详细',
-        '检查习惯需要培养'
-      ],
-      detailedFeedback: '本次考试整体表现良好，基础知识掌握扎实，计算能力较强。在代数运算方面表现出色，但在几何证明和应用题理解方面还需要进一步加强。建议多做类似的练习题，提高空间想象能力和逻辑推理能力。'
-    },
-    questionAnalysis: [
-      {
-        questionNumber: 1,
-        score: 8,
-        maxScore: 10,
-        feedback: '基础计算正确，但过程略显简单，建议写出详细步骤'
-      },
-      {
-        questionNumber: 2,
-        score: 9,
-        maxScore: 10,
-        feedback: '解题思路正确，答案准确，表现优秀'
-      },
-      {
-        questionNumber: 3,
-        score: 6,
-        maxScore: 10,
-        feedback: '几何证明逻辑有误，需要重新理解定理条件'
-      }
-    ]
-  };
-
-  const simulateProcessing = async () => {
-    const steps: Array<{step: ProcessingStep, duration: number, message: string}> = [
-      { step: "upload", duration: 1000, message: "正在上传试卷..." },
-      { step: "ocr", duration: 2000, message: "正在识别试卷内容..." },
-      { step: "analysis", duration: 3000, message: "AI正在分析试卷..." },
-      { step: "results", duration: 500, message: "生成分析报告..." }
-    ];
-
-    for (const { step, duration, message } of steps) {
-      setCurrentStep(step);
-      setProgress({ step, progress: 0, message });
+  const processWithGemini = async (paperId: string) => {
+    try {
+      // Step 1: OCR Processing
+      setCurrentStep("ocr");
+      setProgress({ step: "ocr", progress: 0, message: "正在识别试卷内容..." });
       
-      // Simulate progress for current step
-      for (let i = 0; i <= 100; i += 10) {
+      for (let i = 0; i <= 90; i += 10) {
         setProgress(prev => ({ ...prev, progress: i }));
-        await new Promise(resolve => setTimeout(resolve, duration / 10));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
-    }
 
-    setResults(mockResults);
-    setAppState("completed");
+      const ocrResponse = await fetch(`/api/exam-papers/${paperId}/ocr`, {
+        method: 'POST',
+      });
+      
+      if (!ocrResponse.ok) {
+        throw new Error('OCR处理失败');
+      }
+
+      setProgress({ step: "ocr", progress: 100, message: "OCR识别完成" });
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Step 2: AI Analysis
+      setCurrentStep("analysis");
+      setProgress({ step: "analysis", progress: 0, message: "AI正在分析试卷..." });
+      
+      for (let i = 0; i <= 90; i += 10) {
+        setProgress(prev => ({ ...prev, progress: i }));
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      const analysisResponse = await fetch(`/api/exam-papers/${paperId}/analyze`, {
+        method: 'POST',
+      });
+      
+      if (!analysisResponse.ok) {
+        throw new Error('AI分析失败');
+      }
+
+      const analysisData = await analysisResponse.json();
+      setProgress({ step: "analysis", progress: 100, message: "AI分析完成" });
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Step 3: Results
+      setCurrentStep("results");
+      setProgress({ step: "results", progress: 100, message: "生成分析报告..." });
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      setResults(analysisData.result);
+      setAppState("completed");
+      
+      toast({
+        title: "分析完成",
+        description: "试卷已成功分析，查看详细结果吧！",
+      });
+    } catch (error) {
+      console.error('Processing error:', error);
+      setAppState("error");
+      toast({
+        title: "处理失败", 
+        description: error instanceof Error ? error.message : "试卷处理过程中出现错误",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleFileSelect = async (file: File) => {
-    console.log('File selected:', file.name);
-    setAppState("processing");
-    await simulateProcessing();
+    try {
+      console.log('File selected:', file.name);
+      setAppState("uploading");
+      setCurrentStep("upload");
+      setProgress({ step: "upload", progress: 0, message: "正在上传试卷..." });
+
+      // Upload file
+      const formData = new FormData();
+      formData.append('examPaper', file);
+
+      for (let i = 0; i <= 90; i += 10) {
+        setProgress(prev => ({ ...prev, progress: i }));
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const uploadResponse = await fetch('/api/exam-papers/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('文件上传失败');
+      }
+
+      const uploadData = await uploadResponse.json();
+      setProgress({ step: "upload", progress: 100, message: "上传完成" });
+      setExamPaperId(uploadData.examPaperId);
+      setAppState("processing");
+
+      // Start processing with Gemini
+      await processWithGemini(uploadData.examPaperId);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setAppState("error");
+      toast({
+        title: "上传失败",
+        description: error instanceof Error ? error.message : "文件上传过程中出现错误",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleStartOver = () => {
@@ -94,16 +137,61 @@ export default function Home() {
     setCurrentStep("upload");
     setProgress({ step: "upload", progress: 0, message: "准备上传..." });
     setResults(null);
+    setExamPaperId(null);
   };
 
   const handleDownload = () => {
-    console.log('下载分析报告');
-    // todo: remove mock functionality - implement real download
+    if (results) {
+      const dataStr = JSON.stringify(results, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = `试卷分析报告_${new Date().toLocaleDateString()}.json`;
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+      
+      toast({
+        title: "下载成功",
+        description: "分析报告已保存到您的设备",
+      });
+    }
   };
 
   const handleShare = () => {
-    console.log('分享分析结果');
-    // todo: remove mock functionality - implement real sharing
+    if (results && navigator.share) {
+      navigator.share({
+        title: '试卷分析报告',
+        text: `试卷得分：${results.overallScore}/${results.maxScore} (${results.grade})`,
+        url: window.location.href,
+      }).then(() => {
+        toast({
+          title: "分享成功",
+          description: "分析结果已分享",
+        });
+      }).catch(() => {
+        // Fallback to copying to clipboard
+        copyToClipboard();
+      });
+    } else {
+      copyToClipboard();
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (results) {
+      const shareText = `试卷智能分析结果：
+得分：${results.overallScore}/${results.maxScore} (${results.grade})
+总体评价：${results.feedback.detailedFeedback}`;
+      
+      navigator.clipboard.writeText(shareText).then(() => {
+        toast({
+          title: "已复制到剪贴板",
+          description: "分析结果已复制，可以粘贴分享给其他人",
+        });
+      });
+    }
   };
 
   return (
@@ -133,15 +221,36 @@ export default function Home() {
           </div>
         )}
 
-        {appState === "processing" && (
+        {(appState === "uploading" || appState === "processing") && (
           <div className="space-y-6 py-8">
             <div className="text-center">
-              <h2 className="text-xl font-semibold mb-2">正在处理试卷</h2>
+              <h2 className="text-xl font-semibold mb-2">
+                {appState === "uploading" ? "正在上传试卷" : "正在处理试卷"}
+              </h2>
               <p className="text-muted-foreground">
-                请稍候，AI正在分析您的试卷
+                {appState === "uploading" ? "文件正在上传中..." : "请稍候，AI正在分析您的试卷"}
               </p>
             </div>
             <ProgressIndicator progress={progress} />
+          </div>
+        )}
+
+        {appState === "error" && (
+          <div className="space-y-6 py-8 text-center">
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-destructive">处理失败</h2>
+              <p className="text-muted-foreground">
+                试卷处理过程中遇到问题，请重试
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={handleStartOver}
+              data-testid="button-retry"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              重新开始
+            </Button>
           </div>
         )}
 
