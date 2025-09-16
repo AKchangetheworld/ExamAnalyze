@@ -39,7 +39,19 @@ export default function Home() {
       });
       
       if (!ocrResponse.ok) {
-        throw new Error('OCR处理失败');
+        const errorText = await ocrResponse.text().catch(() => 'Unknown error');
+        throw new Error(`OCR处理失败: ${ocrResponse.status} - ${errorText}`);
+      }
+
+      // OCR response validation - only parse if content type is JSON
+      const contentType = ocrResponse.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          await ocrResponse.json(); // Parse but don't store since not used
+        } catch (jsonError) {
+          console.error('OCR JSON parse error:', jsonError);
+          throw new Error('OCR响应格式错误');
+        }
       }
 
       setProgress({ step: "ocr", progress: 100, message: "OCR识别完成" });
@@ -59,10 +71,22 @@ export default function Home() {
       });
       
       if (!analysisResponse.ok) {
-        throw new Error('AI分析失败');
+        const errorText = await analysisResponse.text().catch(() => 'Unknown error');
+        throw new Error(`AI分析失败: ${analysisResponse.status} - ${errorText}`);
       }
 
-      const analysisData = await analysisResponse.json();
+      let analysisData;
+      try {
+        analysisData = await analysisResponse.json();
+      } catch (jsonError) {
+        console.error('Analysis JSON parse error:', jsonError);
+        throw new Error('分析响应格式错误');
+      }
+
+      if (!analysisData || !analysisData.result) {
+        throw new Error('分析结果为空或格式错误');
+      }
+
       setProgress({ step: "analysis", progress: 100, message: "AI分析完成" });
       await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -79,8 +103,20 @@ export default function Home() {
         description: "试卷已成功分析，查看详细结果吧！",
       });
     } catch (error) {
-      console.error('Processing error:', error);
+      console.error('Processing error:', error, {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+      
+      // Ensure we don't clear the page by maintaining component state
       setAppState("error");
+      setProgress({ 
+        step: currentStep, 
+        progress: 0, 
+        message: "处理失败" 
+      });
+      
       toast({
         title: "处理失败", 
         description: error instanceof Error ? error.message : "试卷处理过程中出现错误",
@@ -111,10 +147,22 @@ export default function Home() {
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('文件上传失败');
+        const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+        throw new Error(`文件上传失败: ${uploadResponse.status} - ${errorText}`);
       }
 
-      const uploadData = await uploadResponse.json();
+      let uploadData;
+      try {
+        uploadData = await uploadResponse.json();
+      } catch (jsonError) {
+        console.error('Upload JSON parse error:', jsonError);
+        throw new Error('上传响应格式错误');
+      }
+
+      if (!uploadData || !uploadData.examPaperId) {
+        throw new Error('上传响应缺少试卷ID');
+      }
+
       setProgress({ step: "upload", progress: 100, message: "上传完成" });
       setExamPaperId(uploadData.examPaperId);
       setAppState("processing");
@@ -122,8 +170,20 @@ export default function Home() {
       // Start processing with Gemini
       await processWithGemini(uploadData.examPaperId);
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('Upload error:', error, {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+      
+      // Ensure we don't clear the page by maintaining component state
       setAppState("error");
+      setProgress({ 
+        step: "upload", 
+        progress: 0, 
+        message: "上传失败" 
+      });
+      
       toast({
         title: "上传失败",
         description: error instanceof Error ? error.message : "文件上传过程中出现错误",
