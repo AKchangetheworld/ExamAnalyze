@@ -1,44 +1,28 @@
 import { type User, type InsertUser, type ExamPaper, type InsertExamPaper, type WrongQuestion, type AnalysisResult } from "@shared/schema";
 import { randomUUID } from "crypto";
-import session from "express-session";
-// @ts-ignore: memorystore has no types
-import createMemoryStore from "memorystore";
-
-const MemoryStore = createMemoryStore(session);
 
 // modify the interface with any CRUD methods
 // you might need
 
 export interface IStorage {
-  // User management
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   
-  // Exam paper management
   createExamPaper(examPaper: InsertExamPaper): Promise<ExamPaper>;
   getExamPaper(id: string): Promise<ExamPaper | undefined>;
   updateExamPaper(id: string, updates: Partial<ExamPaper>): Promise<ExamPaper | undefined>;
   
-  // Wrong questions - now user-scoped
-  getWrongQuestions(userId: string): Promise<WrongQuestion[]>;
-  
-  // Session store for authentication
-  sessionStore: session.Store;
+  getWrongQuestions(): Promise<WrongQuestion[]>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private examPapers: Map<string, ExamPaper>;
-  public sessionStore: session.Store;
 
   constructor() {
     this.users = new Map();
     this.examPapers = new Map();
-    // Initialize session store with in-memory storage
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000, // Clean up expired sessions every 24 hours
-    });
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -62,7 +46,6 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const examPaper: ExamPaper = { 
       id,
-      userId: insertExamPaper.userId,
       filename: insertExamPaper.filename,
       filePath: insertExamPaper.filePath || null,
       originalText: insertExamPaper.originalText || null,
@@ -90,13 +73,10 @@ export class MemStorage implements IStorage {
     return updatedExamPaper;
   }
 
-  async getWrongQuestions(userId: string): Promise<WrongQuestion[]> {
+  async getWrongQuestions(): Promise<WrongQuestion[]> {
     const wrongQuestions: WrongQuestion[] = [];
     
-    // Only get exam papers for the specific user
-    const examPapers = Array.from(this.examPapers.values())
-      .filter(examPaper => examPaper.userId === userId);
-    
+    const examPapers = Array.from(this.examPapers.values());
     for (const examPaper of examPapers) {
       if (examPaper.analysisResult && examPaper.status === 'completed') {
         try {
@@ -113,8 +93,7 @@ export class MemStorage implements IStorage {
               explanation: q.explanation,
               feedback: q.feedback,
               examId: examPaper.id,
-              examDate: examPaper.uploadedAt?.toLocaleDateString('zh-CN') || '未知日期',
-              userId: examPaper.userId
+              examDate: examPaper.uploadedAt?.toLocaleDateString('zh-CN') || '未知日期'
             }));
           
           wrongQuestions.push(...examWrongQuestions);
