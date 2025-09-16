@@ -1,28 +1,44 @@
 import { type User, type InsertUser, type ExamPaper, type InsertExamPaper, type WrongQuestion, type AnalysisResult } from "@shared/schema";
 import { randomUUID } from "crypto";
+import session from "express-session";
+// @ts-ignore: memorystore has no types
+import createMemoryStore from "memorystore";
+
+const MemoryStore = createMemoryStore(session);
 
 // modify the interface with any CRUD methods
 // you might need
 
 export interface IStorage {
+  // User management
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   
+  // Exam paper management
   createExamPaper(examPaper: InsertExamPaper): Promise<ExamPaper>;
   getExamPaper(id: string): Promise<ExamPaper | undefined>;
   updateExamPaper(id: string, updates: Partial<ExamPaper>): Promise<ExamPaper | undefined>;
   
-  getWrongQuestions(): Promise<WrongQuestion[]>;
+  // Wrong questions - now user-scoped
+  getWrongQuestions(userId?: string): Promise<WrongQuestion[]>;
+  
+  // Session store for authentication
+  sessionStore: session.Store;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private examPapers: Map<string, ExamPaper>;
+  public sessionStore: session.Store;
 
   constructor() {
     this.users = new Map();
     this.examPapers = new Map();
+    // Initialize session store with in-memory storage
+    this.sessionStore = new MemoryStore({
+      checkPeriod: 86400000, // Clean up expired sessions every 24 hours
+    });
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -73,7 +89,7 @@ export class MemStorage implements IStorage {
     return updatedExamPaper;
   }
 
-  async getWrongQuestions(): Promise<WrongQuestion[]> {
+  async getWrongQuestions(userId?: string): Promise<WrongQuestion[]> {
     const wrongQuestions: WrongQuestion[] = [];
     
     const examPapers = Array.from(this.examPapers.values());

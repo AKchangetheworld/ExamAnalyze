@@ -19,6 +19,10 @@ localPort = 33059
 externalPort = 3002
 
 [[ports]]
+localPort = 33251
+externalPort = 3003
+
+[[ports]]
 localPort = 37229
 externalPort = 3000
 
@@ -51,4 +55,4 @@ args = "npm run dev"
 waitForPort = 5000
 
 [agent]
-integrations = ["javascript_openai:1.0.0", "javascript_gemini:1.0.0"]
+integrations = ["javascript_openai:1.0.0", "javascript_gemini:1.0.0", "javascript_auth_all_persistance:1.0.0"]
