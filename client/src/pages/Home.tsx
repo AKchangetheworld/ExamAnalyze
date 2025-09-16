@@ -21,6 +21,7 @@ export default function Home() {
   });
   const [results, setResults] = useState<AnalysisResult | null>(null);
   const [examPaperId, setExamPaperId] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false); // Guard against concurrent processing
   const { toast } = useToast();
 
   // SessionStorage key for persistence
@@ -127,7 +128,7 @@ export default function Home() {
         if (error instanceof TypeError && error.message.includes('fetch') && attempt < maxRetries) {
           const delay = baseDelay * Math.pow(2, attempt);
           console.log(`Network error, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
-          setProgress(prev => ({ ...prev, message: `网络连接中断，正在重连... (${attempt + 1}/${maxRetries + 1})` }));
+          updateStateAndSave({ progress: { step: currentStep, progress: progress.progress, message: `网络连接中断，正在重连... (${attempt + 1}/${maxRetries + 1})` } });
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -135,7 +136,7 @@ export default function Home() {
         if (error instanceof DOMException && error.name === 'AbortError' && attempt < maxRetries) {
           const delay = baseDelay * Math.pow(2, attempt);
           console.log(`Request timeout, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries + 1})`);
-          setProgress(prev => ({ ...prev, message: `请求超时，正在重试... (${attempt + 1}/${maxRetries + 1})` }));
+          updateStateAndSave({ progress: { step: currentStep, progress: progress.progress, message: `请求超时，正在重试... (${attempt + 1}/${maxRetries + 1})` } });
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -162,7 +163,7 @@ export default function Home() {
       setResults(savedState.results);
       
       // If we were in the middle of processing, resume
-      if (savedState.appState === 'processing' && savedState.examPaperId) {
+      if (savedState.appState === 'processing' && savedState.examPaperId && !isProcessing) {
         toast({
           title: "恢复处理",
           description: "检测到中断的任务，正在继续分析...",
@@ -180,7 +181,7 @@ export default function Home() {
   useEffect(() => {
     const handleOnline = () => {
       console.log('Back online');
-      if (appState === 'processing' && examPaperId) {
+      if (appState === 'processing' && examPaperId && !isProcessing) {
         toast({
           title: "网络已恢复",
           description: "正在继续处理任务...",
@@ -220,6 +221,14 @@ export default function Home() {
   }, [appState, currentStep, progress, examPaperId]);
 
   const processWithGemini = async (paperId: string) => {
+    // Prevent concurrent processing
+    if (isProcessing) {
+      console.log('Processing already in progress, skipping...');
+      return;
+    }
+    
+    setIsProcessing(true);
+    
     try {
       // Step 1: OCR Processing
       updateStateAndSave({
@@ -328,26 +337,40 @@ export default function Home() {
         description: error instanceof Error ? error.message : "试卷处理过程中出现错误",
         variant: "destructive",
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleFileSelect = async (file: File) => {
+    // Prevent concurrent uploads/processing
+    if (isProcessing) {
+      toast({
+        title: "正在处理中",
+        description: "请等待当前任务完成",
+        variant: "default",
+      });
+      return;
+    }
+    
     try {
       console.log('File selected:', file.name);
-      setAppState("uploading");
-      setCurrentStep("upload");
-      setProgress({ step: "upload", progress: 0, message: "正在上传试卷..." });
+      updateStateAndSave({
+        appState: "uploading",
+        currentStep: "upload",
+        progress: { step: "upload", progress: 0, message: "正在上传试卷..." }
+      });
 
       // Upload file
       const formData = new FormData();
       formData.append('examPaper', file);
 
       for (let i = 0; i <= 90; i += 10) {
-        setProgress(prev => ({ ...prev, progress: i }));
+        updateStateAndSave({ progress: { step: "upload", progress: i, message: "正在上传试卷..." } });
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      const uploadResponse = await fetch('/api/exam-papers/upload', {
+      const uploadResponse = await resilientFetch('/api/exam-papers/upload', {
         method: 'POST',
         body: formData,
       });
@@ -369,9 +392,11 @@ export default function Home() {
         throw new Error('上传响应缺少试卷ID');
       }
 
-      setProgress({ step: "upload", progress: 100, message: "上传完成" });
-      setExamPaperId(uploadData.examPaperId);
-      setAppState("processing");
+      updateStateAndSave({
+        appState: "processing",
+        progress: { step: "upload", progress: 100, message: "上传完成" },
+        examPaperId: uploadData.examPaperId
+      });
 
       // Start processing with Gemini
       await processWithGemini(uploadData.examPaperId);
@@ -383,11 +408,13 @@ export default function Home() {
       });
       
       // Ensure we don't clear the page by maintaining component state
-      setAppState("error");
-      setProgress({ 
-        step: "upload", 
-        progress: 0, 
-        message: "上传失败" 
+      updateStateAndSave({
+        appState: "error",
+        progress: { 
+          step: "upload", 
+          progress: 0, 
+          message: "上传失败" 
+        }
       });
       
       toast({
@@ -399,11 +426,15 @@ export default function Home() {
   };
 
   const handleStartOver = () => {
-    setAppState("idle");
-    setCurrentStep("upload");
-    setProgress({ step: "upload", progress: 0, message: "准备上传..." });
-    setResults(null);
-    setExamPaperId(null);
+    clearSavedState();
+    setIsProcessing(false);
+    updateStateAndSave({
+      appState: "idle",
+      currentStep: "upload",
+      progress: { step: "upload", progress: 0, message: "准备上传..." },
+      results: null,
+      examPaperId: null
+    });
   };
 
   const handleDownload = () => {
