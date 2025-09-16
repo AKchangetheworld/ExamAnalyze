@@ -102,26 +102,8 @@ export default function Home() {
     const baseDelay = 500; // Start with 500ms
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      let controller: AbortController | null = null;
-      let timeoutId: NodeJS.Timeout | null = null;
-      
       try {
-        // Add timeout to each request
-        controller = new AbortController();
-        
-        // Set up simple timeout
-        timeoutId = setTimeout(() => {
-          if (controller) {
-            controller.abort();
-          }
-        }, 10000);
-        
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal
-        });
-        
-        if (timeoutId) clearTimeout(timeoutId);
+        const response = await fetch(url, options);
         
         // If it's a server error (5xx), retry
         if (response.status >= 500 && attempt < maxRetries) {
@@ -133,22 +115,11 @@ export default function Home() {
         
         return response;
       } catch (error) {
-        // Clean up timeout on error
-        if (timeoutId) clearTimeout(timeoutId);
-        
         // If it's a network error and we have retries left
         if (error instanceof TypeError && error.message.includes('fetch') && attempt < maxRetries) {
           const delay = baseDelay * Math.pow(2, attempt);
           console.log(`Network error, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
           updateStateAndSave({ progress: { step: currentStep, progress: progress.progress, message: `网络连接中断，正在重连... (${attempt + 1}/${maxRetries + 1})` } });
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-        // If it's an abort error due to timeout and we have retries left
-        if (error instanceof DOMException && error.name === 'AbortError' && attempt < maxRetries) {
-          const delay = baseDelay * Math.pow(2, attempt);
-          console.log(`Request timeout, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries + 1})`);
-          updateStateAndSave({ progress: { step: currentStep, progress: progress.progress, message: `请求超时，正在重试... (${attempt + 1}/${maxRetries + 1})` } });
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
