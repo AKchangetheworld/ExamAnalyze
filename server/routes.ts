@@ -6,6 +6,7 @@ import fs from "fs";
 import { storage } from "./storage";
 import { analyzeExamPaper, extractTextFromImage } from "./gemini";
 import { insertExamPaperSchema } from "@shared/schema";
+import { setupAuth } from "./auth";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -22,14 +23,25 @@ const upload = multer({
   },
 });
 
+// Middleware to require authentication
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  next();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Create uploads directory if it doesn't exist
   if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
   }
 
-  // Upload and analyze exam paper
-  app.post('/api/exam-papers/upload', upload.single('examPaper'), async (req, res) => {
+  // Setup authentication routes and middleware (from blueprint:javascript_auth_all_persistance)
+  setupAuth(app);
+
+  // Upload and analyze exam paper - require authentication
+  app.post('/api/exam-papers/upload', requireAuth, upload.single('examPaper'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: '请上传试卷图片' });
@@ -57,8 +69,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Process exam paper with OCR
-  app.post('/api/exam-papers/:id/ocr', async (req, res) => {
+  // Process exam paper with OCR - require authentication
+  app.post('/api/exam-papers/:id/ocr', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const examPaper = await storage.getExamPaper(id);
@@ -111,8 +123,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Analyze exam paper with AI
-  app.post('/api/exam-papers/:id/analyze', async (req, res) => {
+  // Analyze exam paper with AI - require authentication
+  app.post('/api/exam-papers/:id/analyze', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const examPaper = await storage.getExamPaper(id);
@@ -175,8 +187,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get exam paper result
-  app.get('/api/exam-papers/:id', async (req, res) => {
+  // Get exam paper result - require authentication
+  app.get('/api/exam-papers/:id', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const examPaper = await storage.getExamPaper(id);
@@ -208,10 +220,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get wrong questions
-  app.get('/api/wrong-questions', async (req, res) => {
+  // Get wrong questions - require authentication and scoped to user
+  app.get('/api/wrong-questions', requireAuth, async (req, res) => {
     try {
-      const wrongQuestions = await storage.getWrongQuestions();
+      const userId = (req as any).user?.id;
+      const wrongQuestions = await storage.getWrongQuestions(userId);
       
       res.set('Content-Type', 'application/json; charset=utf-8');
       res.json(wrongQuestions);

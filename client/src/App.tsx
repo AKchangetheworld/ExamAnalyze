@@ -5,13 +5,18 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/Home";
 import WrongQuestions from "@/pages/WrongQuestions";
+import AuthPage from "@/pages/AuthPage";
 import NotFound from "@/pages/not-found";
+// Auth integration from blueprint:javascript_auth_all_persistance
+import { AuthProvider } from "@/hooks/use-auth";
+import { ProtectedRoute } from "@/lib/protected-route";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/wrong-questions" component={WrongQuestions} />
+      <ProtectedRoute path="/" component={Home} />
+      <ProtectedRoute path="/wrong-questions" component={WrongQuestions} />
+      <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -20,10 +25,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
