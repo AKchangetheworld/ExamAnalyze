@@ -31,9 +31,14 @@ export default function ResultsCard({ result, onDownload, onShare, className = "
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">批改结果</CardTitle>
-          <Badge className={`text-sm font-semibold ${getGradeColor(result.grade)}`}>
-            {normalizeGrade(result.grade)}
-          </Badge>
+          {(() => {
+            const normalizedGrade = normalizeGrade(result.grade);
+            return (
+              <Badge className={`text-sm font-semibold ${getGradeColor(normalizedGrade)}`}>
+                {normalizedGrade}
+              </Badge>
+            );
+          })()}
         </div>
       </CardHeader>
 
