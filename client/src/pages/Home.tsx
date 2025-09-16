@@ -289,10 +289,12 @@ export default function Home() {
       });
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      updateStateAndSave({
-        results: analysisData.result,
-        appState: "completed"
-      });
+      // Ensure atomic update of results and completed state
+      setResults(analysisData.result);
+      setAppState("completed");
+      
+      // Clear saved state since we're completed
+      clearSavedState();
       
       toast({
         title: "分析完成",
@@ -534,23 +536,37 @@ export default function Home() {
           </div>
         )}
 
-        {appState === "completed" && results && (
+        {appState === "completed" && (
           <div className="space-y-6">
-            <ResultsCard 
-              result={results} 
-              onDownload={handleDownload}
-              onShare={handleShare}
-            />
-            
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={handleStartOver}
-              data-testid="button-start-over"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              分析新试卷
-            </Button>
+            {results ? (
+              <>
+                <ResultsCard 
+                  result={results} 
+                  onDownload={handleDownload}
+                  onShare={handleShare}
+                />
+                
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleStartOver}
+                  data-testid="button-start-over"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  分析新试卷
+                </Button>
+              </>
+            ) : (
+              <div className="space-y-6 py-8 text-center">
+                <div className="space-y-2">
+                  <h2 className="text-xl font-semibold">生成报告中...</h2>
+                  <p className="text-muted-foreground">
+                    正在整理分析结果，请稍候
+                  </p>
+                </div>
+                <div className="animate-spin mx-auto h-8 w-8 border-2 border-primary border-t-transparent rounded-full"></div>
+              </div>
+            )}
           </div>
         )}
       </main>
