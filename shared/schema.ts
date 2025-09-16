@@ -69,7 +69,24 @@ export interface AnalysisResult {
     score: number;
     maxScore: number;
     feedback: string;
+    questionText: string;      // 题目内容
+    userAnswer: string;        // 用户答案
+    correctAnswer: string;     // 正确答案
+    explanation: string;       // 详细解析
+    isCorrect: boolean;        // 是否答对
   }[];
+}
+
+// Interface for wrong questions (错题)
+export interface WrongQuestion {
+  questionNumber: number;
+  questionText: string;
+  userAnswer: string;
+  correctAnswer: string;
+  explanation: string;
+  feedback: string;
+  examId: string;
+  examDate: string;
 }
 
 // Helper function to normalize grade strings (fixes Unicode variant issues)

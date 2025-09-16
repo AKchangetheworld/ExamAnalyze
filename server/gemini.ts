@@ -31,17 +31,24 @@ export async function analyzeExamPaper(imagePath: string): Promise<AnalysisResul
       "questionNumber": 题号,
       "score": 得分,
       "maxScore": 满分,
-      "feedback": "具体题目的反馈"
+      "feedback": "具体题目的反馈",
+      "questionText": "题目的完整内容",
+      "userAnswer": "学生写的答案",
+      "correctAnswer": "标准答案",
+      "explanation": "详细的解题思路和知识点解析",
+      "isCorrect": true/false (是否答对)
     }
   ]
 }
 
 分析要求：
 1. 仔细识别试卷上的所有题目和答案
-2. 根据答案的正确性、完整性、规范性进行评分
-3. 提供具体、有建设性的反馈
-4. 评分要公正合理
-5. 反馈要鼓励学习进步`;
+2. 对每道题提供完整的题目文本、学生答案、标准答案和详细解析
+3. 根据答案的正确性、完整性、规范性进行评分
+4. 提供具体、有建设性的反馈
+5. 评分要公正合理
+6. 反馈要鼓励学习进步
+7. 解析要包含知识点说明和解题方法`;
 
         const contents = [
             {
@@ -86,9 +93,14 @@ export async function analyzeExamPaper(imagePath: string): Promise<AnalysisResul
                                     questionNumber: { type: "number" },
                                     score: { type: "number" },
                                     maxScore: { type: "number" },
-                                    feedback: { type: "string" }
+                                    feedback: { type: "string" },
+                                    questionText: { type: "string" },
+                                    userAnswer: { type: "string" },
+                                    correctAnswer: { type: "string" },
+                                    explanation: { type: "string" },
+                                    isCorrect: { type: "boolean" }
                                 },
-                                required: ["questionNumber", "score", "maxScore", "feedback"]
+                                required: ["questionNumber", "score", "maxScore", "feedback", "questionText", "userAnswer", "correctAnswer", "explanation", "isCorrect"]
                             }
                         }
                     },

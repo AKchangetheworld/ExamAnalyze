@@ -208,6 +208,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get wrong questions
+  app.get('/api/wrong-questions', async (req, res) => {
+    try {
+      const wrongQuestions = await storage.getWrongQuestions();
+      
+      res.set('Content-Type', 'application/json; charset=utf-8');
+      res.json(wrongQuestions);
+    } catch (error) {
+      console.error('Get wrong questions error:', error);
+      res.status(500).json({ error: '获取错题失败' });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

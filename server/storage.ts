@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type ExamPaper, type InsertExamPaper } from "@shared/schema";
+import { type User, type InsertUser, type ExamPaper, type InsertExamPaper, type WrongQuestion, type AnalysisResult } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 // modify the interface with any CRUD methods
@@ -12,6 +12,8 @@ export interface IStorage {
   createExamPaper(examPaper: InsertExamPaper): Promise<ExamPaper>;
   getExamPaper(id: string): Promise<ExamPaper | undefined>;
   updateExamPaper(id: string, updates: Partial<ExamPaper>): Promise<ExamPaper | undefined>;
+  
+  getWrongQuestions(): Promise<WrongQuestion[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -69,6 +71,40 @@ export class MemStorage implements IStorage {
     const updatedExamPaper = { ...examPaper, ...updates };
     this.examPapers.set(id, updatedExamPaper);
     return updatedExamPaper;
+  }
+
+  async getWrongQuestions(): Promise<WrongQuestion[]> {
+    const wrongQuestions: WrongQuestion[] = [];
+    
+    const examPapers = Array.from(this.examPapers.values());
+    for (const examPaper of examPapers) {
+      if (examPaper.analysisResult && examPaper.status === 'completed') {
+        try {
+          const analysisResult: AnalysisResult = JSON.parse(examPaper.analysisResult);
+          
+          // Extract wrong questions from this exam
+          const examWrongQuestions = analysisResult.questionAnalysis
+            .filter(q => !q.isCorrect)
+            .map(q => ({
+              questionNumber: q.questionNumber,
+              questionText: q.questionText,
+              userAnswer: q.userAnswer,
+              correctAnswer: q.correctAnswer,
+              explanation: q.explanation,
+              feedback: q.feedback,
+              examId: examPaper.id,
+              examDate: examPaper.uploadedAt?.toLocaleDateString('zh-CN') || '未知日期'
+            }));
+          
+          wrongQuestions.push(...examWrongQuestions);
+        } catch (error) {
+          console.error(`Failed to parse analysis result for exam ${examPaper.id}:`, error);
+        }
+      }
+    }
+    
+    // Sort by most recent first
+    return wrongQuestions.reverse();
   }
 }
 
