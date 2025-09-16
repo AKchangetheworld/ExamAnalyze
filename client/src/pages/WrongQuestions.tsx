@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, BookOpen, Target, Lightbulb, Calendar } from "lucide-react";
+import { AlertCircle, BookOpen, Target, Lightbulb, Calendar, Home } from "lucide-react";
 import { Link } from "wouter";
 
 export default function WrongQuestions() {
@@ -47,10 +47,18 @@ export default function WrongQuestions() {
   return (
     <div className="container mx-auto py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold flex items-center gap-2 mb-2">
-          <AlertCircle className="h-8 w-8 text-destructive" />
-          错题本
-        </h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            错题本
+          </h1>
+          <Link href="/">
+            <Button variant="outline" className="gap-2" data-testid="button-back-home">
+              <Home className="h-4 w-4" />
+              返回主页
+            </Button>
+          </Link>
+        </div>
         <p className="text-muted-foreground">
           总共 {wrongQuestions.length} 道错题，温故而知新
         </p>
