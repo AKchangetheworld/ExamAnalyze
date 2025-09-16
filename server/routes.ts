@@ -97,7 +97,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('OCR error:', error);
       await storage.updateExamPaper(req.params.id, { status: 'error' });
-      res.status(500).json({ error: 'OCR识别失败' });
+      
+      // Handle specific API errors
+      if (error instanceof Error && error.message.includes('503')) {
+        res.status(503).json({ error: '服务暂时过载，请稍后重试' });
+      } else if (error instanceof Error && error.message.includes('429')) {
+        res.status(429).json({ error: '请求过于频繁，请稍后重试' });
+      } else {
+        res.status(500).json({ error: 'OCR识别失败' });
+      }
     }
   });
 
@@ -152,7 +160,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Analysis error:', error);
       await storage.updateExamPaper(req.params.id, { status: 'error' });
-      res.status(500).json({ error: 'AI分析失败' });
+      
+      // Handle specific API errors
+      if (error instanceof Error && error.message.includes('503')) {
+        res.status(503).json({ error: '服务暂时过载，请稍后重试' });
+      } else if (error instanceof Error && error.message.includes('429')) {
+        res.status(429).json({ error: '请求过于频繁，请稍后重试' });
+      } else {
+        res.status(500).json({ error: 'AI分析失败' });
+      }
     }
   });
 
