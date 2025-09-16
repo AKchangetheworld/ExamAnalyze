@@ -48,10 +48,17 @@ export interface UploadProgress {
   message: string;
 }
 
+// Valid grade enum for strict validation
+export const VALID_GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F'] as const;
+export type ValidGrade = typeof VALID_GRADES[number];
+
+// Grade validation schema
+export const gradeSchema = z.enum(VALID_GRADES);
+
 export interface AnalysisResult {
   overallScore: number;
   maxScore: number;
-  grade: string;
+  grade: ValidGrade;
   feedback: {
     strengths: string[];
     improvements: string[];
@@ -63,4 +70,31 @@ export interface AnalysisResult {
     maxScore: number;
     feedback: string;
   }[];
+}
+
+// Helper function to normalize grade strings (fixes Unicode variant issues)
+export function normalizeGrade(grade: string): ValidGrade {
+  if (!grade) return 'F';
+  
+  // Normalize to uppercase and trim whitespace
+  let normalized = grade.trim().toUpperCase();
+  
+  // Replace various Unicode plus sign variants with ASCII +
+  normalized = normalized
+    .replace(/[\uFF0B\u207A\uFE62\u2795]/g, '+') // Fullwidth, superscript, small, heavy plus
+    .replace(/[\u2212\uFF0D\u207B]/g, '-'); // Various minus signs
+  
+  // Validate against known grades
+  if (VALID_GRADES.includes(normalized as ValidGrade)) {
+    return normalized as ValidGrade;
+  }
+  
+  // Fallback mapping for common patterns
+  if (normalized.includes('A')) return normalized.includes('+') ? 'A+' : normalized.includes('-') ? 'A-' : 'A';
+  if (normalized.includes('B')) return normalized.includes('+') ? 'B+' : normalized.includes('-') ? 'B-' : 'B';
+  if (normalized.includes('C')) return normalized.includes('+') ? 'C+' : normalized.includes('-') ? 'C-' : 'C';
+  if (normalized.includes('D')) return normalized.includes('+') ? 'D+' : normalized.includes('-') ? 'D-' : 'D';
+  
+  // Default fallback
+  return 'F';
 }

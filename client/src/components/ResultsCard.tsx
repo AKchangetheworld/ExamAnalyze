@@ -1,4 +1,4 @@
-import { AnalysisResult } from "@shared/schema";
+import { AnalysisResult, normalizeGrade } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ export default function ResultsCard({ result, onDownload, onShare, className = "
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">批改结果</CardTitle>
           <Badge className={`text-sm font-semibold ${getGradeColor(result.grade)}`}>
-            {result.grade}
+            {normalizeGrade(result.grade)}
           </Badge>
         </div>
       </CardHeader>

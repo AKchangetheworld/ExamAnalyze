@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { GoogleGenAI } from "@google/genai";
-import { AnalysisResult } from "@shared/schema";
+import { AnalysisResult, normalizeGrade } from "@shared/schema";
 
 // DON'T DELETE THIS COMMENT
 // Follow these instructions when using this blueprint:
@@ -103,6 +103,10 @@ export async function analyzeExamPaper(imagePath: string): Promise<AnalysisResul
 
         if (rawJson) {
             const result: AnalysisResult = JSON.parse(rawJson);
+            
+            // Normalize grade to ensure ASCII characters only (fixes mobile display issues)
+            result.grade = normalizeGrade(result.grade);
+            
             return result;
         } else {
             throw new Error("Empty response from Gemini");

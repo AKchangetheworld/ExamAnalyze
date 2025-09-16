@@ -45,6 +45,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         score: null,
       });
 
+      res.set('Content-Type', 'application/json; charset=utf-8');
       res.json({ 
         success: true, 
         examPaperId: examPaper.id,
@@ -89,6 +90,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'ocr_completed'
       });
 
+      res.set('Content-Type', 'application/json; charset=utf-8');
       res.json({ 
         success: true, 
         message: 'OCR识别完成',
@@ -152,6 +154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn('Failed to cleanup file:', cleanupError);
       }
 
+      res.set('Content-Type', 'application/json; charset=utf-8');
       res.json({ 
         success: true, 
         message: 'AI分析完成',
@@ -191,6 +194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      res.set('Content-Type', 'application/json; charset=utf-8');
       res.json({
         success: true,
         examPaper: {
