@@ -21,7 +21,7 @@ export interface IStorage {
   updateExamPaper(id: string, updates: Partial<ExamPaper>): Promise<ExamPaper | undefined>;
   
   // Wrong questions - now user-scoped
-  getWrongQuestions(userId?: string): Promise<WrongQuestion[]>;
+  getWrongQuestions(userId: string): Promise<WrongQuestion[]>;
   
   // Session store for authentication
   sessionStore: session.Store;
@@ -62,6 +62,7 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const examPaper: ExamPaper = { 
       id,
+      userId: insertExamPaper.userId,
       filename: insertExamPaper.filename,
       filePath: insertExamPaper.filePath || null,
       originalText: insertExamPaper.originalText || null,
@@ -89,10 +90,13 @@ export class MemStorage implements IStorage {
     return updatedExamPaper;
   }
 
-  async getWrongQuestions(userId?: string): Promise<WrongQuestion[]> {
+  async getWrongQuestions(userId: string): Promise<WrongQuestion[]> {
     const wrongQuestions: WrongQuestion[] = [];
     
-    const examPapers = Array.from(this.examPapers.values());
+    // Only get exam papers for the specific user
+    const examPapers = Array.from(this.examPapers.values())
+      .filter(examPaper => examPaper.userId === userId);
+    
     for (const examPaper of examPapers) {
       if (examPaper.analysisResult && examPaper.status === 'completed') {
         try {
@@ -109,7 +113,8 @@ export class MemStorage implements IStorage {
               explanation: q.explanation,
               feedback: q.feedback,
               examId: examPaper.id,
-              examDate: examPaper.uploadedAt?.toLocaleDateString('zh-CN') || '未知日期'
+              examDate: examPaper.uploadedAt?.toLocaleDateString('zh-CN') || '未知日期',
+              userId: examPaper.userId
             }));
           
           wrongQuestions.push(...examWrongQuestions);

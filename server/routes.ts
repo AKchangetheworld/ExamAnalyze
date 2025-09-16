@@ -47,8 +47,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: '请上传试卷图片' });
       }
 
-      // Create exam paper record
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: '用户未认证' });
+      }
+
+      // Create exam paper record with userId for security
       const examPaper = await storage.createExamPaper({
+        userId: userId,
         filename: req.file.originalname,
         filePath: req.file.path,
         status: 'uploaded',
@@ -73,10 +79,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/exam-papers/:id/ocr', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = (req as any).user?.id;
+      
+      if (!userId) {
+        return res.status(401).json({ error: '用户未认证' });
+      }
+      
       const examPaper = await storage.getExamPaper(id);
       
       if (!examPaper) {
         return res.status(404).json({ error: '试卷不存在' });
+      }
+      
+      // Security check: ensure user owns this exam paper
+      if (examPaper.userId !== userId) {
+        return res.status(403).json({ error: '无权访问此试卷' });
       }
 
       // Update status to processing OCR
@@ -127,10 +144,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/exam-papers/:id/analyze', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = (req as any).user?.id;
+      
+      if (!userId) {
+        return res.status(401).json({ error: '用户未认证' });
+      }
+      
       const examPaper = await storage.getExamPaper(id);
       
       if (!examPaper) {
         return res.status(404).json({ error: '试卷不存在' });
+      }
+      
+      // Security check: ensure user owns this exam paper
+      if (examPaper.userId !== userId) {
+        return res.status(403).json({ error: '无权访问此试卷' });
       }
 
       // Update status to analyzing
@@ -191,10 +219,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/exam-papers/:id', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = (req as any).user?.id;
+      
+      if (!userId) {
+        return res.status(401).json({ error: '用户未认证' });
+      }
+      
       const examPaper = await storage.getExamPaper(id);
       
       if (!examPaper) {
         return res.status(404).json({ error: '试卷不存在' });
+      }
+      
+      // Security check: ensure user owns this exam paper
+      if (examPaper.userId !== userId) {
+        return res.status(403).json({ error: '无权访问此试卷' });
       }
 
       let analysisResult = null;

@@ -11,6 +11,7 @@ export const users = pgTable("users", {
 
 export const examPapers = pgTable("exam_papers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
   filename: text("filename").notNull(),
   filePath: text("file_path"),
   originalText: text("original_text"),
@@ -26,6 +27,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 });
 
 export const insertExamPaperSchema = createInsertSchema(examPapers).pick({
+  userId: true,
   filename: true,
   filePath: true,
   originalText: true,
@@ -87,6 +89,7 @@ export interface WrongQuestion {
   feedback: string;
   examId: string;
   examDate: string;
+  userId: string;
 }
 
 // Helper function to normalize grade strings (fixes Unicode variant issues)
