@@ -38,6 +38,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create exam paper record
       const examPaper = await storage.createExamPaper({
         filename: req.file.originalname,
+        filePath: req.file.path,
         status: 'uploaded',
         originalText: null,
         analysisResult: null,
@@ -68,17 +69,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update status to processing OCR
       await storage.updateExamPaper(id, { status: 'processing' });
 
-      // Find the uploaded file
-      const uploadedFiles = fs.readdirSync('uploads');
-      const uploadedFile = uploadedFiles.find(file => 
-        fs.statSync(path.join('uploads', file)).isFile()
-      );
+      // Use the correct file path for this exam paper
+      if (!examPaper.filePath) {
+        return res.status(404).json({ error: '试卷文件路径未找到' });
+      }
 
-      if (!uploadedFile) {
+      if (!fs.existsSync(examPaper.filePath)) {
         return res.status(404).json({ error: '上传的文件未找到' });
       }
 
-      const filePath = path.join('uploads', uploadedFile);
+      const filePath = examPaper.filePath;
       
       // Extract text using Gemini
       const extractedText = await extractTextFromImage(filePath);
@@ -114,17 +114,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update status to analyzing
       await storage.updateExamPaper(id, { status: 'analyzing' });
 
-      // Find the uploaded file
-      const uploadedFiles = fs.readdirSync('uploads');
-      const uploadedFile = uploadedFiles.find(file => 
-        fs.statSync(path.join('uploads', file)).isFile()
-      );
+      // Use the correct file path for this exam paper
+      if (!examPaper.filePath) {
+        return res.status(404).json({ error: '试卷文件路径未找到' });
+      }
 
-      if (!uploadedFile) {
+      if (!fs.existsSync(examPaper.filePath)) {
         return res.status(404).json({ error: '上传的文件未找到' });
       }
 
-      const filePath = path.join('uploads', uploadedFile);
+      const filePath = examPaper.filePath;
       
       // Analyze with Gemini
       const analysisResult = await analyzeExamPaper(filePath);
@@ -135,6 +134,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         score: analysisResult.overallScore,
         status: 'completed'
       });
+
+      // Clean up the uploaded file after successful analysis
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup file:', cleanupError);
+      }
 
       res.json({ 
         success: true, 

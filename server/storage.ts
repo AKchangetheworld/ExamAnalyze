@@ -45,6 +45,7 @@ export class MemStorage implements IStorage {
     const examPaper: ExamPaper = { 
       id,
       filename: insertExamPaper.filename,
+      filePath: insertExamPaper.filePath || null,
       originalText: insertExamPaper.originalText || null,
       analysisResult: insertExamPaper.analysisResult || null,
       score: insertExamPaper.score || null,

@@ -12,6 +12,7 @@ export const users = pgTable("users", {
 export const examPapers = pgTable("exam_papers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   filename: text("filename").notNull(),
+  filePath: text("file_path"),
   originalText: text("original_text"),
   analysisResult: text("analysis_result"),
   score: integer("score"),
@@ -26,6 +27,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export const insertExamPaperSchema = createInsertSchema(examPapers).pick({
   filename: true,
+  filePath: true,
   originalText: true,
   analysisResult: true,
   score: true,
