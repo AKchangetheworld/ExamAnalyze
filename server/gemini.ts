@@ -12,7 +12,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 export async function analyzeExamPaper(imagePath: string): Promise<AnalysisResult> {
     try {
-        const imageBytes = fs.readFileSync(imagePath);
+        const imageBytes = await fs.promises.readFile(imagePath);
         
         const systemPrompt = `你是一个专业的试卷批改老师。请仔细分析这份试卷图片，提供详细的评分和反馈。
 
@@ -131,7 +131,7 @@ export async function analyzeExamPaper(imagePath: string): Promise<AnalysisResul
 
 export async function extractTextFromImage(imagePath: string): Promise<string> {
     try {
-        const imageBytes = fs.readFileSync(imagePath);
+        const imageBytes = await fs.promises.readFile(imagePath);
         
         const contents = [
             {

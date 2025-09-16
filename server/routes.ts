@@ -111,7 +111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Analyze exam paper with AI
+  // Analyze exam paper with AI (combined OCR + Analysis)
   app.post('/api/exam-papers/:id/analyze', async (req, res) => {
     try {
       const { id } = req.params;
@@ -121,7 +121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: '试卷不存在' });
       }
 
-      // Update status to analyzing
+      // Update status to analyzing (skip separate OCR step)
       await storage.updateExamPaper(id, { status: 'analyzing' });
 
       // Use the correct file path for this exam paper
@@ -135,11 +135,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const filePath = examPaper.filePath;
       
-      // Analyze with Gemini
+      // Single Gemini call performs both OCR and analysis
       const analysisResult = await analyzeExamPaper(filePath);
       
-      // Update exam paper with analysis result
+      // Update exam paper with analysis result and extracted text (implicit in analysis)
       await storage.updateExamPaper(id, { 
+        originalText: 'OCR集成在分析中完成',
         analysisResult: JSON.stringify(analysisResult),
         score: analysisResult.overallScore,
         status: 'completed'

@@ -213,50 +213,11 @@ export default function Home() {
     setIsProcessing(true);
     
     try {
-      // Step 1: OCR Processing
-      updateStateAndSave({
-        currentStep: "ocr",
-        progress: { step: "ocr", progress: 0, message: "正在识别试卷内容..." }
-      });
-      
-      for (let i = 0; i <= 90; i += 10) {
-        updateStateAndSave({ progress: { step: "ocr", progress: i, message: "正在识别试卷内容..." } });
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
-      const ocrResponse = await resilientFetch(`/api/exam-papers/${paperId}/ocr`, {
-        method: 'POST',
-      });
-      
-      if (!ocrResponse.ok) {
-        const errorText = await ocrResponse.text().catch(() => 'Unknown error');
-        throw new Error(`OCR处理失败: ${ocrResponse.status} - ${errorText}`);
-      }
-
-      // OCR response validation - only parse if content type is JSON
-      const contentType = ocrResponse.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        try {
-          await ocrResponse.json(); // Parse but don't store since not used
-        } catch (jsonError) {
-          console.error('OCR JSON parse error:', jsonError);
-          throw new Error('OCR响应格式错误');
-        }
-      }
-
-      updateStateAndSave({ progress: { step: "ocr", progress: 100, message: "OCR识别完成" } });
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Step 2: AI Analysis
+      // Step 1: Direct AI Analysis (includes OCR)
       updateStateAndSave({
         currentStep: "analysis",
-        progress: { step: "analysis", progress: 0, message: "AI正在分析试卷..." }
+        progress: { step: "analysis", progress: 50, message: "正在分析试卷（包含文字识别）..." }
       });
-      
-      for (let i = 0; i <= 90; i += 10) {
-        updateStateAndSave({ progress: { step: "analysis", progress: i, message: "AI正在分析试卷..." } });
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
 
       const analysisResponse = await resilientFetch(`/api/exam-papers/${paperId}/analyze`, {
         method: 'POST',
@@ -280,14 +241,12 @@ export default function Home() {
       }
 
       updateStateAndSave({ progress: { step: "analysis", progress: 100, message: "AI分析完成" } });
-      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Step 3: Results
       updateStateAndSave({
         currentStep: "results",
         progress: { step: "results", progress: 100, message: "生成分析报告..." }
       });
-      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Ensure atomic update of results and completed state
       setResults(analysisData.result);
@@ -327,6 +286,45 @@ export default function Home() {
     }
   };
 
+  // Compress image on client side to reduce upload time and API processing time
+  const compressImage = (file: File, maxWidth = 1600, quality = 0.8): Promise<File> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculate new dimensions while maintaining aspect ratio
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw and compress
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            resolve(compressedFile);
+          } else {
+            resolve(file); // Fallback to original if compression fails
+          }
+        }, 'image/jpeg', quality);
+      };
+      
+      img.onerror = () => resolve(file); // Fallback to original if load fails
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   const handleFileSelect = async (file: File) => {
     // Prevent concurrent uploads/processing
     if (isProcessing) {
@@ -343,17 +341,18 @@ export default function Home() {
       updateStateAndSave({
         appState: "uploading",
         currentStep: "upload",
-        progress: { step: "upload", progress: 0, message: "正在上传试卷..." }
+        progress: { step: "upload", progress: 20, message: "正在优化图片..." }
       });
+
+      // Compress image for faster upload and processing
+      const compressedFile = await compressImage(file);
+      console.log(`图片压缩: ${(file.size / 1024 / 1024).toFixed(2)}MB -> ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
 
       // Upload file
       const formData = new FormData();
-      formData.append('examPaper', file);
+      formData.append('examPaper', compressedFile);
 
-      for (let i = 0; i <= 90; i += 10) {
-        updateStateAndSave({ progress: { step: "upload", progress: i, message: "正在上传试卷..." } });
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      updateStateAndSave({ progress: { step: "upload", progress: 50, message: "正在上传试卷..." } });
 
       const uploadResponse = await resilientFetch('/api/exam-papers/upload', {
         method: 'POST',
