@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ProcessingStep, UploadProgress, AnalysisResult } from "@shared/schema";
 import Header from "@/components/Header";
 import FileUpload from "@/components/FileUpload";
@@ -23,18 +23,216 @@ export default function Home() {
   const [examPaperId, setExamPaperId] = useState<string | null>(null);
   const { toast } = useToast();
 
+  // SessionStorage key for persistence
+  const STORAGE_KEY = 'exam-analysis-state';
+
+  // Save state to sessionStorage
+  const saveStateToStorage = (state: {
+    appState: AppState;
+    currentStep: ProcessingStep;
+    progress: UploadProgress;
+    examPaperId: string | null;
+    results: AnalysisResult | null;
+  }) => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (error) {
+      console.warn('Failed to save state to sessionStorage:', error);
+    }
+  };
+
+  // Load state from sessionStorage
+  const loadStateFromStorage = () => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (error) {
+      console.warn('Failed to load state from sessionStorage:', error);
+    }
+    return null;
+  };
+
+  // Clear saved state
+  const clearSavedState = () => {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      console.warn('Failed to clear saved state:', error);
+    }
+  };
+
+  // Auto-save state changes
+  const updateStateAndSave = (newState: Partial<{
+    appState: AppState;
+    currentStep: ProcessingStep;
+    progress: UploadProgress;
+    examPaperId: string | null;
+    results: AnalysisResult | null;
+  }>) => {
+    // Update individual states
+    if (newState.appState !== undefined) setAppState(newState.appState);
+    if (newState.currentStep !== undefined) setCurrentStep(newState.currentStep);
+    if (newState.progress !== undefined) setProgress(newState.progress);
+    if (newState.examPaperId !== undefined) setExamPaperId(newState.examPaperId);
+    if (newState.results !== undefined) setResults(newState.results);
+
+    // Save complete state
+    const currentState = {
+      appState: newState.appState ?? appState,
+      currentStep: newState.currentStep ?? currentStep,
+      progress: newState.progress ?? progress,
+      examPaperId: newState.examPaperId ?? examPaperId,
+      results: newState.results ?? results,
+    };
+    
+    // Only save if we're in a processing state
+    if (currentState.appState === 'uploading' || currentState.appState === 'processing') {
+      saveStateToStorage(currentState);
+    } else if (currentState.appState === 'completed' || currentState.appState === 'error' || currentState.appState === 'idle') {
+      clearSavedState();
+    }
+  };
+
+  // Resilient fetch with exponential backoff for network errors
+  const resilientFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    const maxRetries = 4;
+    const baseDelay = 500; // Start with 500ms
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        // Add timeout to each request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+        
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        // If it's a server error (5xx), retry
+        if (response.status >= 500 && attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt);
+          console.log(`Server error ${response.status}, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries + 1})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        return response;
+      } catch (error) {
+        // If it's a network error and we have retries left
+        if (error instanceof TypeError && error.message.includes('fetch') && attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt);
+          console.log(`Network error, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries + 1}):`, error.message);
+          setProgress(prev => ({ ...prev, message: `网络连接中断，正在重连... (${attempt + 1}/${maxRetries + 1})` }));
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        // If it's an abort error due to timeout and we have retries left
+        if (error instanceof DOMException && error.name === 'AbortError' && attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt);
+          console.log(`Request timeout, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries + 1})`);
+          setProgress(prev => ({ ...prev, message: `请求超时，正在重试... (${attempt + 1}/${maxRetries + 1})` }));
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        // If we're out of retries or it's a different error, throw
+        throw error;
+      }
+    }
+    
+    throw new Error('Max retries exceeded');
+  };
+
+  // Restore state from sessionStorage on mount
+  useEffect(() => {
+    const savedState = loadStateFromStorage();
+    if (savedState && savedState.examPaperId) {
+      console.log('Restoring saved state:', savedState);
+      
+      // Restore all state values
+      setAppState(savedState.appState);
+      setCurrentStep(savedState.currentStep);
+      setProgress(savedState.progress);
+      setExamPaperId(savedState.examPaperId);
+      setResults(savedState.results);
+      
+      // If we were in the middle of processing, resume
+      if (savedState.appState === 'processing' && savedState.examPaperId) {
+        toast({
+          title: "恢复处理",
+          description: "检测到中断的任务，正在继续分析...",
+        });
+        
+        // Resume processing from where we left off
+        setTimeout(() => {
+          processWithGemini(savedState.examPaperId);
+        }, 1000);
+      }
+    }
+  }, []);
+
+  // Handle online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('Back online');
+      if (appState === 'processing' && examPaperId) {
+        toast({
+          title: "网络已恢复",
+          description: "正在继续处理任务...",
+        });
+        // Continue processing if we were in progress
+        setTimeout(() => {
+          processWithGemini(examPaperId);
+        }, 1000);
+      }
+    };
+
+    const handleOffline = () => {
+      console.log('Gone offline');
+      if (appState === 'processing') {
+        updateStateAndSave({
+          progress: { 
+            step: currentStep, 
+            progress: progress.progress, 
+            message: "网络连接中断，等待网络恢复..." 
+          }
+        });
+        toast({
+          title: "网络连接中断",
+          description: "请检查网络连接，我们会在网络恢复时自动继续",
+          variant: "destructive",
+        });
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [appState, currentStep, progress, examPaperId]);
+
   const processWithGemini = async (paperId: string) => {
     try {
       // Step 1: OCR Processing
-      setCurrentStep("ocr");
-      setProgress({ step: "ocr", progress: 0, message: "正在识别试卷内容..." });
+      updateStateAndSave({
+        currentStep: "ocr",
+        progress: { step: "ocr", progress: 0, message: "正在识别试卷内容..." }
+      });
       
       for (let i = 0; i <= 90; i += 10) {
-        setProgress(prev => ({ ...prev, progress: i }));
+        updateStateAndSave({ progress: { step: "ocr", progress: i, message: "正在识别试卷内容..." } });
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      const ocrResponse = await fetch(`/api/exam-papers/${paperId}/ocr`, {
+      const ocrResponse = await resilientFetch(`/api/exam-papers/${paperId}/ocr`, {
         method: 'POST',
       });
       
@@ -54,19 +252,21 @@ export default function Home() {
         }
       }
 
-      setProgress({ step: "ocr", progress: 100, message: "OCR识别完成" });
+      updateStateAndSave({ progress: { step: "ocr", progress: 100, message: "OCR识别完成" } });
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // Step 2: AI Analysis
-      setCurrentStep("analysis");
-      setProgress({ step: "analysis", progress: 0, message: "AI正在分析试卷..." });
+      updateStateAndSave({
+        currentStep: "analysis",
+        progress: { step: "analysis", progress: 0, message: "AI正在分析试卷..." }
+      });
       
       for (let i = 0; i <= 90; i += 10) {
-        setProgress(prev => ({ ...prev, progress: i }));
+        updateStateAndSave({ progress: { step: "analysis", progress: i, message: "AI正在分析试卷..." } });
         await new Promise(resolve => setTimeout(resolve, 300));
       }
 
-      const analysisResponse = await fetch(`/api/exam-papers/${paperId}/analyze`, {
+      const analysisResponse = await resilientFetch(`/api/exam-papers/${paperId}/analyze`, {
         method: 'POST',
       });
       
@@ -87,16 +287,20 @@ export default function Home() {
         throw new Error('分析结果为空或格式错误');
       }
 
-      setProgress({ step: "analysis", progress: 100, message: "AI分析完成" });
+      updateStateAndSave({ progress: { step: "analysis", progress: 100, message: "AI分析完成" } });
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // Step 3: Results
-      setCurrentStep("results");
-      setProgress({ step: "results", progress: 100, message: "生成分析报告..." });
+      updateStateAndSave({
+        currentStep: "results",
+        progress: { step: "results", progress: 100, message: "生成分析报告..." }
+      });
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      setResults(analysisData.result);
-      setAppState("completed");
+      updateStateAndSave({
+        results: analysisData.result,
+        appState: "completed"
+      });
       
       toast({
         title: "分析完成",
@@ -110,11 +314,13 @@ export default function Home() {
       });
       
       // Ensure we don't clear the page by maintaining component state
-      setAppState("error");
-      setProgress({ 
-        step: currentStep, 
-        progress: 0, 
-        message: "处理失败" 
+      updateStateAndSave({
+        appState: "error",
+        progress: { 
+          step: currentStep, 
+          progress: 0, 
+          message: "处理失败" 
+        }
       });
       
       toast({
