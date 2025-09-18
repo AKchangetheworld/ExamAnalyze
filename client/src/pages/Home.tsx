@@ -38,8 +38,10 @@ export default function Home() {
     imagePreviewUrl: string | null;
   }) => {
     try {
-      console.log('💾 Saving state to sessionStorage:', state);
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      // Exclude imagePreviewUrl from persistence as object URLs don't survive reloads
+      const { imagePreviewUrl, ...persistableState } = state;
+      console.log('💾 Saving state to sessionStorage:', persistableState);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persistableState));
     } catch (error) {
       console.warn('Failed to save state to sessionStorage:', error);
     }
@@ -329,6 +331,9 @@ export default function Home() {
         // Draw and compress
         ctx.drawImage(img, 0, 0, width, height);
         
+        // Clean up the temporary object URL after processing
+        URL.revokeObjectURL(imageUrl);
+        
         canvas.toBlob((blob) => {
           if (blob) {
             const compressedFile = new File([blob], file.name, {
@@ -342,8 +347,13 @@ export default function Home() {
         }, 'image/jpeg', quality);
       };
       
-      img.onerror = () => resolve(file); // Fallback to original if load fails
-      img.src = URL.createObjectURL(file);
+      img.onerror = () => {
+        // Clean up the temporary object URL on error
+        URL.revokeObjectURL(imageUrl);
+        resolve(file); // Fallback to original if load fails
+      };
+      const imageUrl = URL.createObjectURL(file);
+      img.src = imageUrl;
     });
   };
 
@@ -508,7 +518,11 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <Header />
       
-      <main className="container max-w-md mx-auto p-4 space-y-6">
+      <main className={`container mx-auto p-4 space-y-6 ${
+        (appState === "uploading" || appState === "processing") && imagePreviewUrl 
+          ? "max-w-3xl" 
+          : "max-w-md"
+      }`}>
         {/* Processing Steps - Always visible when processing or completed */}
         {(appState === "processing" || appState === "completed") && (
           <ProcessingSteps 
