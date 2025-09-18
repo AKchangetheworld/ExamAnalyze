@@ -39,18 +39,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: '请上传试卷图片' });
       }
 
+      // Generate accessible image URL
+      const imageUrl = `/api/uploads/${path.basename(req.file.path)}`;
+
       // Create exam paper record
       const examPaper = await storage.createExamPaper({
         filename: req.file.originalname,
         filePath: req.file.path,
+        imageUrl: imageUrl,
         status: 'uploaded',
         originalText: null,
         analysisResult: null,
         score: null,
       });
-
-      // Generate accessible image URL
-      const imageUrl = `/api/uploads/${path.basename(req.file.path)}`;
 
       res.set('Content-Type', 'application/json; charset=utf-8');
       res.json({ 
@@ -154,14 +155,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'completed'
       });
 
-      // Clean up the uploaded file after successful analysis
-      try {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-      } catch (cleanupError) {
-        console.warn('Failed to cleanup file:', cleanupError);
-      }
+      // Keep the uploaded file to support persistent image preview
+      // File cleanup can be handled by a separate background job if needed
 
       res.set('Content-Type', 'application/json; charset=utf-8');
       res.json({ 

@@ -13,6 +13,7 @@ export const examPapers = pgTable("exam_papers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   filename: text("filename").notNull(),
   filePath: text("file_path"),
+  imageUrl: text("image_url"), // URL for accessing the uploaded image
   originalText: text("original_text"),
   analysisResult: text("analysis_result"),
   score: integer("score"),
@@ -28,6 +29,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 export const insertExamPaperSchema = createInsertSchema(examPapers).pick({
   filename: true,
   filePath: true,
+  imageUrl: true,
   originalText: true,
   analysisResult: true,
   score: true,
