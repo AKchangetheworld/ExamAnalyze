@@ -22,6 +22,7 @@ export default function Home() {
   const [results, setResults] = useState<AnalysisResult | null>(null);
   const [examPaperId, setExamPaperId] = useState<string | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [serverImageUrl, setServerImageUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false); // Guard against concurrent processing
   const { toast } = useToast();
 
@@ -36,9 +37,11 @@ export default function Home() {
     examPaperId: string | null;
     results: AnalysisResult | null;
     imagePreviewUrl: string | null;
+    serverImageUrl: string | null;
   }) => {
     try {
       // Exclude imagePreviewUrl from persistence as object URLs don't survive reloads
+      // But keep serverImageUrl as it's a persistent server URL
       const { imagePreviewUrl, ...persistableState } = state;
       console.log('💾 Saving state to sessionStorage:', persistableState);
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persistableState));
@@ -80,6 +83,7 @@ export default function Home() {
     examPaperId: string | null;
     results: AnalysisResult | null;
     imagePreviewUrl: string | null;
+    serverImageUrl: string | null;
   }>) => {
     // Update individual states
     if (newState.appState !== undefined) setAppState(newState.appState);
@@ -88,6 +92,7 @@ export default function Home() {
     if (newState.examPaperId !== undefined) setExamPaperId(newState.examPaperId);
     if (newState.results !== undefined) setResults(newState.results);
     if (newState.imagePreviewUrl !== undefined) setImagePreviewUrl(newState.imagePreviewUrl);
+    if (newState.serverImageUrl !== undefined) setServerImageUrl(newState.serverImageUrl);
 
     // Save complete state
     const currentState = {
@@ -97,6 +102,7 @@ export default function Home() {
       examPaperId: newState.examPaperId ?? examPaperId,
       results: newState.results ?? results,
       imagePreviewUrl: newState.imagePreviewUrl ?? imagePreviewUrl,
+      serverImageUrl: newState.serverImageUrl ?? serverImageUrl,
     };
     
     // Save state for uploading, processing, and completed states
@@ -158,6 +164,13 @@ export default function Home() {
       if (savedState.imagePreviewUrl) {
         setImagePreviewUrl(savedState.imagePreviewUrl);
       }
+      if (savedState.serverImageUrl) {
+        setServerImageUrl(savedState.serverImageUrl);
+        // If we have a server image URL but no preview URL, use the server URL for preview
+        if (!savedState.imagePreviewUrl) {
+          setImagePreviewUrl(savedState.serverImageUrl);
+        }
+      }
       
       // If we were in the middle of processing, resume
       if (savedState.appState === 'processing' && savedState.examPaperId && !isProcessing) {
@@ -174,10 +187,10 @@ export default function Home() {
     }
   }, []);
 
-  // Cleanup image URLs on unmount to prevent memory leaks
+  // Cleanup image URLs on unmount to prevent memory leaks (only for object URLs)
   useEffect(() => {
     return () => {
-      if (imagePreviewUrl) {
+      if (imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(imagePreviewUrl);
       }
     };
@@ -412,7 +425,8 @@ export default function Home() {
       updateStateAndSave({
         appState: "processing",
         progress: { step: "upload", progress: 100, message: "上传完成" },
-        examPaperId: uploadData.examPaperId
+        examPaperId: uploadData.examPaperId,
+        serverImageUrl: uploadData.imageUrl
       });
 
       // Start processing with Gemini
@@ -443,8 +457,8 @@ export default function Home() {
   };
 
   const handleStartOver = () => {
-    // Clean up image URL to prevent memory leaks
-    if (imagePreviewUrl) {
+    // Clean up image URL to prevent memory leaks (only for object URLs)
+    if (imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(imagePreviewUrl);
     }
     
@@ -456,7 +470,8 @@ export default function Home() {
       progress: { step: "upload", progress: 0, message: "准备上传..." },
       results: null,
       examPaperId: null,
-      imagePreviewUrl: null
+      imagePreviewUrl: null,
+      serverImageUrl: null
     });
   };
 

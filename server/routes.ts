@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import express from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import path from "path";
@@ -28,6 +29,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     fs.mkdirSync('uploads');
   }
 
+  // Serve uploaded images statically
+  app.use('/api/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
   // Upload and analyze exam paper
   app.post('/api/exam-papers/upload', upload.single('examPaper'), async (req, res) => {
     try {
@@ -45,10 +49,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         score: null,
       });
 
+      // Generate accessible image URL
+      const imageUrl = `/api/uploads/${path.basename(req.file.path)}`;
+
       res.set('Content-Type', 'application/json; charset=utf-8');
       res.json({ 
         success: true, 
         examPaperId: examPaper.id,
+        imageUrl: imageUrl,
         message: '文件上传成功'
       });
     } catch (error) {
