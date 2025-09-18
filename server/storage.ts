@@ -48,6 +48,7 @@ export class MemStorage implements IStorage {
       id,
       filename: insertExamPaper.filename,
       filePath: insertExamPaper.filePath || null,
+      imageUrl: insertExamPaper.imageUrl || null,
       originalText: insertExamPaper.originalText || null,
       analysisResult: insertExamPaper.analysisResult || null,
       score: insertExamPaper.score || null,
