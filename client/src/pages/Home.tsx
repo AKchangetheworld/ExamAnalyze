@@ -518,11 +518,7 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <Header />
       
-      <main className={`container mx-auto p-4 space-y-6 ${
-        ((appState === "uploading" || appState === "processing" || appState === "completed") && imagePreviewUrl)
-          ? "max-w-3xl" 
-          : "max-w-md"
-      }`}>
+      <main className="container max-w-md mx-auto p-4 space-y-6">
         {/* Processing Steps - Always visible when processing or completed */}
         {(appState === "processing" || appState === "completed") && (
           <ProcessingSteps 
