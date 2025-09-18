@@ -21,6 +21,7 @@ export default function Home() {
   });
   const [results, setResults] = useState<AnalysisResult | null>(null);
   const [examPaperId, setExamPaperId] = useState<string | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false); // Guard against concurrent processing
   const { toast } = useToast();
 
@@ -34,6 +35,7 @@ export default function Home() {
     progress: UploadProgress;
     examPaperId: string | null;
     results: AnalysisResult | null;
+    imagePreviewUrl: string | null;
   }) => {
     try {
       console.log('💾 Saving state to sessionStorage:', state);
@@ -75,6 +77,7 @@ export default function Home() {
     progress: UploadProgress;
     examPaperId: string | null;
     results: AnalysisResult | null;
+    imagePreviewUrl: string | null;
   }>) => {
     // Update individual states
     if (newState.appState !== undefined) setAppState(newState.appState);
@@ -82,6 +85,7 @@ export default function Home() {
     if (newState.progress !== undefined) setProgress(newState.progress);
     if (newState.examPaperId !== undefined) setExamPaperId(newState.examPaperId);
     if (newState.results !== undefined) setResults(newState.results);
+    if (newState.imagePreviewUrl !== undefined) setImagePreviewUrl(newState.imagePreviewUrl);
 
     // Save complete state
     const currentState = {
@@ -90,6 +94,7 @@ export default function Home() {
       progress: newState.progress ?? progress,
       examPaperId: newState.examPaperId ?? examPaperId,
       results: newState.results ?? results,
+      imagePreviewUrl: newState.imagePreviewUrl ?? imagePreviewUrl,
     };
     
     // Save state for uploading, processing, and completed states
@@ -148,6 +153,9 @@ export default function Home() {
       setProgress(savedState.progress);
       setExamPaperId(savedState.examPaperId);
       setResults(savedState.results);
+      if (savedState.imagePreviewUrl) {
+        setImagePreviewUrl(savedState.imagePreviewUrl);
+      }
       
       // If we were in the middle of processing, resume
       if (savedState.appState === 'processing' && savedState.examPaperId && !isProcessing) {
@@ -163,6 +171,15 @@ export default function Home() {
       }
     }
   }, []);
+
+  // Cleanup image URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+    };
+  }, [imagePreviewUrl]);
 
   // Handle online/offline status
   useEffect(() => {
@@ -330,7 +347,7 @@ export default function Home() {
     });
   };
 
-  const handleFileSelect = async (file: File) => {
+  const handleFileSelect = async (file: File, previewUrl: string) => {
     // Prevent concurrent uploads/processing
     if (isProcessing) {
       toast({
@@ -346,7 +363,8 @@ export default function Home() {
       updateStateAndSave({
         appState: "uploading",
         currentStep: "upload",
-        progress: { step: "upload", progress: 20, message: "正在优化图片..." }
+        progress: { step: "upload", progress: 20, message: "正在优化图片..." },
+        imagePreviewUrl: previewUrl
       });
 
       // Compress image for faster upload and processing
@@ -415,6 +433,11 @@ export default function Home() {
   };
 
   const handleStartOver = () => {
+    // Clean up image URL to prevent memory leaks
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    
     clearSavedState();
     setIsProcessing(false);
     updateStateAndSave({
@@ -422,7 +445,8 @@ export default function Home() {
       currentStep: "upload",
       progress: { step: "upload", progress: 0, message: "准备上传..." },
       results: null,
-      examPaperId: null
+      examPaperId: null,
+      imagePreviewUrl: null
     });
   };
 
@@ -517,7 +541,32 @@ export default function Home() {
                 {appState === "uploading" ? "文件正在上传中..." : "请稍候，AI正在分析您的试卷"}
               </p>
             </div>
-            <ProgressIndicator progress={progress} />
+            
+            {imagePreviewUrl ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                {/* Image Preview */}
+                <div className="order-2 md:order-1">
+                  <div className="bg-white dark:bg-gray-900 p-3 rounded-lg border shadow-sm">
+                    <img 
+                      src={imagePreviewUrl} 
+                      alt="试卷预览" 
+                      className="w-full h-auto max-h-96 object-contain rounded"
+                      data-testid="image-preview"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-muted-foreground mt-2">
+                    试卷预览
+                  </p>
+                </div>
+                
+                {/* Progress Info */}
+                <div className="order-1 md:order-2">
+                  <ProgressIndicator progress={progress} />
+                </div>
+              </div>
+            ) : (
+              <ProgressIndicator progress={progress} />
+            )}
           </div>
         )}
 

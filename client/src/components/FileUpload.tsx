@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File, previewUrl: string) => void;
   isProcessing?: boolean;
   className?: string;
 }
@@ -32,7 +32,8 @@ export default function FileUpload({ onFileSelect, isProcessing = false, classNa
       const file = e.dataTransfer.files[0];
       if (file.type.startsWith('image/')) {
         setSelectedFile(file);
-        onFileSelect(file);
+        const previewUrl = URL.createObjectURL(file);
+        onFileSelect(file, previewUrl);
       }
     }
   }, [onFileSelect]);
@@ -42,7 +43,8 @@ export default function FileUpload({ onFileSelect, isProcessing = false, classNa
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
-      onFileSelect(file);
+      const previewUrl = URL.createObjectURL(file);
+      onFileSelect(file, previewUrl);
     }
   }, [onFileSelect]);
 
