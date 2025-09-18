@@ -88,10 +88,10 @@ export default function Home() {
       results: newState.results ?? results,
     };
     
-    // Only save if we're in a processing state
-    if (currentState.appState === 'uploading' || currentState.appState === 'processing') {
+    // Save state for uploading, processing, and completed states
+    if (currentState.appState === 'uploading' || currentState.appState === 'processing' || currentState.appState === 'completed') {
       saveStateToStorage(currentState);
-    } else if (currentState.appState === 'completed' || currentState.appState === 'error' || currentState.appState === 'idle') {
+    } else if (currentState.appState === 'error' || currentState.appState === 'idle') {
       clearSavedState();
     }
   };
@@ -249,11 +249,12 @@ export default function Home() {
       });
 
       // Ensure atomic update of results and completed state
-      setResults(analysisData.result);
-      setAppState("completed");
-      
-      // Clear saved state since we're completed
-      clearSavedState();
+      updateStateAndSave({
+        appState: "completed",
+        currentStep: "results",
+        progress: { step: "results", progress: 100, message: "分析完成" },
+        results: analysisData.result
+      });
       
       toast({
         title: "分析完成",
