@@ -36,6 +36,7 @@ export default function Home() {
     results: AnalysisResult | null;
   }) => {
     try {
+      console.log('💾 Saving state to sessionStorage:', state);
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (error) {
       console.warn('Failed to save state to sessionStorage:', error);
@@ -46,8 +47,11 @@ export default function Home() {
   const loadStateFromStorage = () => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
+      console.log('🔍 Loading from sessionStorage, raw data:', saved);
       if (saved) {
-        return JSON.parse(saved);
+        const parsedState = JSON.parse(saved);
+        console.log('📂 Parsed state from sessionStorage:', parsedState);
+        return parsedState;
       }
     } catch (error) {
       console.warn('Failed to load state from sessionStorage:', error);
@@ -135,8 +139,8 @@ export default function Home() {
   // Restore state from sessionStorage on mount
   useEffect(() => {
     const savedState = loadStateFromStorage();
-    if (savedState && savedState.examPaperId) {
-      console.log('Restoring saved state:', savedState);
+    if (savedState && (savedState.examPaperId || savedState.appState === 'completed')) {
+      console.log('🔄 Restoring saved state:', savedState);
       
       // Restore all state values
       setAppState(savedState.appState);
