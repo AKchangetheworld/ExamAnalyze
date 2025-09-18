@@ -519,7 +519,7 @@ export default function Home() {
       <Header />
       
       <main className={`container mx-auto p-4 space-y-6 ${
-        (appState === "uploading" || appState === "processing") && imagePreviewUrl 
+        ((appState === "uploading" || appState === "processing" || appState === "completed") && imagePreviewUrl)
           ? "max-w-3xl" 
           : "max-w-md"
       }`}>
@@ -556,31 +556,25 @@ export default function Home() {
               </p>
             </div>
             
-            {imagePreviewUrl ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+            {imagePreviewUrl && (
+              <div className="space-y-4">
                 {/* Image Preview */}
-                <div className="order-2 md:order-1">
-                  <div className="bg-white dark:bg-gray-900 p-3 rounded-lg border shadow-sm">
-                    <img 
-                      src={imagePreviewUrl} 
-                      alt="试卷预览" 
-                      className="w-full h-auto max-h-96 object-contain rounded"
-                      data-testid="image-preview"
-                    />
-                  </div>
+                <div className="bg-white dark:bg-gray-900 p-3 rounded-lg border shadow-sm">
+                  <img 
+                    src={imagePreviewUrl} 
+                    alt="试卷预览" 
+                    className="w-full h-auto max-h-64 object-contain rounded mx-auto"
+                    data-testid="image-preview"
+                  />
                   <p className="text-center text-xs text-muted-foreground mt-2">
                     试卷预览
                   </p>
                 </div>
-                
-                {/* Progress Info */}
-                <div className="order-1 md:order-2">
-                  <ProgressIndicator progress={progress} />
-                </div>
               </div>
-            ) : (
-              <ProgressIndicator progress={progress} />
             )}
+            
+            {/* Progress Info */}
+            <ProgressIndicator progress={progress} />
           </div>
         )}
 
@@ -607,6 +601,23 @@ export default function Home() {
           <div className="space-y-6">
             {results ? (
               <>
+                {/* Image Preview for completed state */}
+                {imagePreviewUrl && (
+                  <div className="space-y-4">
+                    <div className="bg-white dark:bg-gray-900 p-3 rounded-lg border shadow-sm">
+                      <img 
+                        src={imagePreviewUrl} 
+                        alt="试卷预览" 
+                        className="w-full h-auto max-h-64 object-contain rounded mx-auto"
+                        data-testid="image-preview"
+                      />
+                      <p className="text-center text-xs text-muted-foreground mt-2">
+                        试卷预览
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
                 <ResultsCard 
                   result={results} 
                   onDownload={handleDownload}
