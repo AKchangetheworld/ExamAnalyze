@@ -165,10 +165,14 @@ export default function Home() {
         setImagePreviewUrl(savedState.imagePreviewUrl);
       }
       if (savedState.serverImageUrl) {
+        console.log('🖼️ Setting serverImageUrl:', savedState.serverImageUrl);
         setServerImageUrl(savedState.serverImageUrl);
         // If we have a server image URL but no preview URL, use the server URL for preview
         if (!savedState.imagePreviewUrl) {
+          console.log('🖼️ Setting imagePreviewUrl from server URL:', savedState.serverImageUrl);
           setImagePreviewUrl(savedState.serverImageUrl);
+        } else {
+          console.log('🖼️ imagePreviewUrl already exists:', savedState.imagePreviewUrl);
         }
       }
       
