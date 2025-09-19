@@ -157,17 +157,47 @@ export async function analyzeExamPaper(imagePath: string, filename?: string): Pr
 export async function extractTextFromPDF(pdfPath: string): Promise<string> {
     try {
         const pdfBytes = await fs.promises.readFile(pdfPath);
+        console.log(`PDF file size: ${pdfBytes.length} bytes`);
         
-        // Use createRequire to avoid triggering pdf-parse debug mode in ES modules
-        const { createRequire } = await import('module');
-        const require = createRequire(import.meta.url);
-        const pdf = require('pdf-parse');
-        const data = await pdf(pdfBytes);
+        // For now, use fallback to image OCR for scanned PDFs
+        // since createRequire has TypeScript issues in this environment
+        console.log("PDF detected - falling back to OCR analysis");
+        return await extractTextFromPDFAsImage(pdfPath);
         
-        return data.text || "";
     } catch (error) {
         console.error("Failed to extract text from PDF:", error);
         throw new Error(`PDF文本提取失败: ${error}`);
+    }
+}
+
+async function extractTextFromPDFAsImage(pdfPath: string): Promise<string> {
+    try {
+        // Read PDF as binary and send to Gemini for OCR
+        const pdfBytes = await fs.promises.readFile(pdfPath);
+        
+        const contents = [
+            {
+                inlineData: {
+                    data: pdfBytes.toString("base64"),
+                    mimeType: "application/pdf",
+                },
+            },
+            "请准确识别并提取这份PDF试卷中的所有文字内容，包括题目、答案、说明等。保持原有的格式和结构。",
+        ];
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: contents,
+        });
+
+        const extractedText = response.text || "";
+        console.log(`PDF OCR extracted text length: ${extractedText.length} characters`);
+        console.log(`PDF OCR text preview: ${extractedText.substring(0, 100)}`);
+        
+        return extractedText;
+    } catch (error) {
+        console.error("Failed to extract text from PDF using OCR:", error);
+        throw new Error(`PDF OCR识别失败: ${error}`);
     }
 }
 
