@@ -158,8 +158,9 @@ export async function extractTextFromPDF(pdfPath: string): Promise<string> {
     try {
         const pdfBytes = await fs.promises.readFile(pdfPath);
         
-        // Use regular require to avoid triggering pdf-parse debug mode
-        // Dynamic import causes pdf-parse to think it's in debug mode
+        // Use createRequire to avoid triggering pdf-parse debug mode in ES modules
+        const { createRequire } = await import('module');
+        const require = createRequire(import.meta.url);
         const pdf = require('pdf-parse');
         const data = await pdf(pdfBytes);
         
