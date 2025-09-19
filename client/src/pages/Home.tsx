@@ -84,7 +84,7 @@ export default function Home() {
     results: AnalysisResult | null;
     imagePreviewUrl: string | null;
     serverImageUrl: string | null;
-  }>) => {
+  }>, forceClear = false) => {
     // Update individual states
     if (newState.appState !== undefined) setAppState(newState.appState);
     if (newState.currentStep !== undefined) setCurrentStep(newState.currentStep);
@@ -105,10 +105,11 @@ export default function Home() {
       serverImageUrl: newState.serverImageUrl ?? serverImageUrl,
     };
     
-    // Save state for uploading, processing, and completed states
-    if (currentState.appState === 'uploading' || currentState.appState === 'processing' || currentState.appState === 'completed') {
+    // Save state for uploading, processing, completed, and error states
+    // Only clear state when explicitly requested (forceClear) or transitioning to idle
+    if (currentState.appState === 'uploading' || currentState.appState === 'processing' || currentState.appState === 'completed' || currentState.appState === 'error') {
       saveStateToStorage(currentState);
-    } else if (currentState.appState === 'error' || currentState.appState === 'idle') {
+    } else if (currentState.appState === 'idle' || forceClear) {
       clearSavedState();
     }
   };
@@ -456,13 +457,39 @@ export default function Home() {
     }
   };
 
+  const handleRetryAnalysis = async () => {
+    // Don't retry if already processing or no exam paper ID
+    if (isProcessing || !examPaperId) {
+      toast({
+        title: "无法重试",
+        description: "没有可重试的试卷或正在处理中",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Reset state to processing and retry analysis
+    updateStateAndSave({
+      appState: "processing",
+      currentStep: "analysis",
+      progress: { step: "analysis", progress: 0, message: "重新开始分析..." }
+    });
+
+    toast({
+      title: "正在重试",
+      description: "保持原有试卷，重新进行AI分析",
+    });
+
+    // Retry the analysis with the existing exam paper
+    await processWithGemini(examPaperId);
+  };
+
   const handleStartOver = () => {
     // Clean up image URL to prevent memory leaks (only for object URLs)
     if (imagePreviewUrl && imagePreviewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(imagePreviewUrl);
     }
     
-    clearSavedState();
     setIsProcessing(false);
     updateStateAndSave({
       appState: "idle",
@@ -472,7 +499,7 @@ export default function Home() {
       examPaperId: null,
       imagePreviewUrl: null,
       serverImageUrl: null
-    });
+    }, true); // Force clear saved state
   };
 
   const handleDownload = () => {
@@ -590,21 +617,58 @@ export default function Home() {
         )}
 
         {appState === "error" && (
-          <div className="space-y-6 py-8 text-center">
-            <div className="space-y-2">
+          <div className="space-y-6 py-8">
+            <div className="text-center space-y-2">
               <h2 className="text-xl font-semibold text-destructive">处理失败</h2>
               <p className="text-muted-foreground">
-                试卷处理过程中遇到问题，请重试
+                试卷处理过程中遇到问题，您可以重试分析或重新上传
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={handleStartOver}
-              data-testid="button-retry"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              重新开始
-            </Button>
+            
+            {/* Show image preview if available */}
+            {imagePreviewUrl && (
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-gray-900 p-3 rounded-lg border shadow-sm">
+                  <img 
+                    src={imagePreviewUrl} 
+                    alt="试卷预览" 
+                    className="w-full h-auto max-h-64 object-contain rounded mx-auto"
+                    data-testid="image-preview"
+                  />
+                  <p className="text-center text-xs text-muted-foreground mt-2">
+                    试卷预览
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            <div className="space-y-3">
+              {/* Retry Analysis Button - Only show if we have an exam paper ID */}
+              {examPaperId && (
+                <Button
+                  variant="default"
+                  className="w-full"
+                  onClick={handleRetryAnalysis}
+                  disabled={isProcessing}
+                  data-testid="button-retry-analysis"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  重试分析
+                </Button>
+              )}
+              
+              {/* Start Over Button */}
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleStartOver}
+                disabled={isProcessing}
+                data-testid="button-start-over"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                重新上传试卷
+              </Button>
+            </div>
           </div>
         )}
 
