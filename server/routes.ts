@@ -5,7 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { analyzeExamPaper, extractTextFromImage } from "./gemini";
+import { analyzeExamPaper, extractTextFromImage, extractTextFromPDF, analyzeExamText } from "./gemini";
 import { insertExamPaperSchema } from "@shared/schema";
 
 // Configure multer for file uploads
@@ -15,10 +15,18 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    // Support various image and PDF MIME types
+    const allowedMimeTypes = [
+      // Image types
+      'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif',
+      // PDF types (various browser implementations)
+      'application/pdf', 'application/x-pdf', 'application/acrobat'
+    ];
+    
+    if (allowedMimeTypes.includes(file.mimetype) || file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
-      cb(new Error('只支持图片文件'));
+      cb(new Error('只支持图片文件和PDF文件'));
     }
   },
 });
@@ -36,7 +44,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/exam-papers/upload', upload.single('examPaper'), async (req, res) => {
     try {
       if (!req.file) {
-        return res.status(400).json({ error: '请上传试卷图片' });
+        return res.status(400).json({ error: '请上传试卷图片或PDF文件' });
       }
 
       // Generate accessible image URL
@@ -47,6 +55,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         filename: req.file.originalname,
         filePath: req.file.path,
         imageUrl: imageUrl,
+        mimeType: req.file.mimetype,
         status: 'uploaded',
         originalText: null,
         analysisResult: null,
@@ -90,8 +99,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const filePath = examPaper.filePath;
       
-      // Extract text using Gemini
-      const extractedText = await extractTextFromImage(filePath);
+      // Extract text based on MIME type
+      let extractedText: string;
+      const isPdf = examPaper.mimeType && (
+        examPaper.mimeType === 'application/pdf' ||
+        examPaper.mimeType === 'application/x-pdf' ||
+        examPaper.mimeType === 'application/acrobat'
+      );
+      
+      if (isPdf) {
+        extractedText = await extractTextFromPDF(filePath);
+      } else {
+        extractedText = await extractTextFromImage(filePath, examPaper.filename);
+      }
       
       // Update exam paper with OCR result
       await storage.updateExamPaper(id, { 
@@ -144,8 +164,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const filePath = examPaper.filePath;
       
-      // Single Gemini call performs both OCR and analysis
-      const analysisResult = await analyzeExamPaper(filePath);
+      // Determine file type based on MIME type and use appropriate analysis method
+      let analysisResult;
+      const isPdf = examPaper.mimeType && (
+        examPaper.mimeType === 'application/pdf' ||
+        examPaper.mimeType === 'application/x-pdf' ||
+        examPaper.mimeType === 'application/acrobat'
+      );
+      
+      if (isPdf) {
+        // For PDF files: extract text then analyze
+        const extractedText = await extractTextFromPDF(filePath);
+        analysisResult = await analyzeExamText(extractedText);
+      } else {
+        // For image files: use direct image analysis
+        analysisResult = await analyzeExamPaper(filePath, examPaper.filename);
+      }
       
       // Update exam paper with analysis result and extracted text (implicit in analysis)
       await storage.updateExamPaper(id, { 

@@ -14,6 +14,7 @@ export const examPapers = pgTable("exam_papers", {
   filename: text("filename").notNull(),
   filePath: text("file_path"),
   imageUrl: text("image_url"), // URL for accessing the uploaded image
+  mimeType: text("mime_type"), // MIME type from multer upload
   originalText: text("original_text"),
   analysisResult: text("analysis_result"),
   score: integer("score"),
@@ -30,6 +31,7 @@ export const insertExamPaperSchema = createInsertSchema(examPapers).pick({
   filename: true,
   filePath: true,
   imageUrl: true,
+  mimeType: true,
   originalText: true,
   analysisResult: true,
   score: true,

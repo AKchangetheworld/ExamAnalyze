@@ -30,10 +30,18 @@ export default function FileUpload({ onFileSelect, isProcessing = false, classNa
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('image/')) {
+      
+      // Validate file type with robust checking (same as onChange)
+      const isPdfByMime = ['application/pdf', 'application/x-pdf', 'application/acrobat'].includes(file.type);
+      const isPdfByExtension = file.name.toLowerCase().endsWith('.pdf');
+      const isImage = file.type.startsWith('image/');
+      
+      if (isImage || isPdfByMime || isPdfByExtension) {
         setSelectedFile(file);
         const previewUrl = URL.createObjectURL(file);
         onFileSelect(file, previewUrl);
+      } else {
+        console.warn('Unsupported file type in drag/drop:', file.type, 'File name:', file.name);
       }
     }
   }, [onFileSelect]);
@@ -42,9 +50,21 @@ export default function FileUpload({ onFileSelect, isProcessing = false, classNa
     e.preventDefault();
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setSelectedFile(file);
-      const previewUrl = URL.createObjectURL(file);
-      onFileSelect(file, previewUrl);
+      
+      // Validate file type with robust checking
+      const isPdfByMime = ['application/pdf', 'application/x-pdf', 'application/acrobat'].includes(file.type);
+      const isPdfByExtension = file.name.toLowerCase().endsWith('.pdf');
+      const isImage = file.type.startsWith('image/');
+      
+      if (isImage || isPdfByMime || isPdfByExtension) {
+        setSelectedFile(file);
+        const previewUrl = URL.createObjectURL(file);
+        onFileSelect(file, previewUrl);
+      } else {
+        // Reset the input and show error
+        e.target.value = '';
+        console.warn('Unsupported file type:', file.type, 'File name:', file.name);
+      }
     }
   }, [onFileSelect]);
 
@@ -98,7 +118,7 @@ export default function FileUpload({ onFileSelect, isProcessing = false, classNa
           id="file-upload"
           type="file"
           className="hidden"
-          accept="image/*"
+          accept="image/*,.pdf,application/pdf,application/x-pdf,application/acrobat"
           onChange={handleChange}
           disabled={isProcessing}
           data-testid="input-file-upload"
@@ -107,10 +127,10 @@ export default function FileUpload({ onFileSelect, isProcessing = false, classNa
         <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
         <h3 className="text-lg font-semibold mb-2">上传试卷</h3>
         <p className="text-sm text-muted-foreground mb-4">
-          拖拽试卷图片到这里，或点击选择文件
+          拖拽试卷图片或PDF文件到这里，或点击选择文件
         </p>
         <p className="text-xs text-muted-foreground">
-          支持 JPG、PNG 格式，文件大小不超过 10MB
+          支持 JPG、PNG、PDF 格式，文件大小不超过 10MB
         </p>
       </div>
     </Card>
