@@ -173,17 +173,17 @@ export default function Home() {
         }
       }
       
-      // If we were in the middle of processing, resume
-      if (savedState.appState === 'processing' && savedState.examPaperId && !isProcessing) {
+      // Don't automatically resume processing - let user decide
+      // This prevents automatic conflicts and unexpected page clearing
+      if (savedState.appState === 'processing' && savedState.examPaperId) {
+        // Just show that we can resume, but don't do it automatically
         toast({
-          title: "恢复处理",
-          description: "检测到中断的任务，正在继续分析...",
+          title: "任务已恢复",
+          description: "检测到未完成的分析任务，您可以点击重试分析按钮继续",
         });
         
-        // Resume processing from where we left off
-        setTimeout(() => {
-          processWithGemini(savedState.examPaperId);
-        }, 1000);
+        // Set state to error so user can manually retry
+        setAppState('error');
       }
     }
   }, []);
@@ -201,15 +201,14 @@ export default function Home() {
   useEffect(() => {
     const handleOnline = () => {
       console.log('Back online');
-      if (appState === 'processing' && examPaperId && !isProcessing) {
+      // Don't automatically continue processing to prevent conflicts
+      if (appState === 'processing' && examPaperId) {
         toast({
           title: "网络已恢复",
-          description: "正在继续处理任务...",
+          description: "网络连接已恢复，您可以点击重试分析按钮继续",
         });
-        // Continue processing if we were in progress
-        setTimeout(() => {
-          processWithGemini(examPaperId);
-        }, 1000);
+        // Change to error state so user can manually retry
+        updateStateAndSave({ appState: 'error' });
       }
     };
 
@@ -225,7 +224,7 @@ export default function Home() {
         });
         toast({
           title: "网络连接中断",
-          description: "请检查网络连接，我们会在网络恢复时自动继续",
+          description: "请检查网络连接",
           variant: "destructive",
         });
       }
