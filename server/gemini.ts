@@ -158,8 +158,9 @@ export async function extractTextFromPDF(pdfPath: string): Promise<string> {
     try {
         const pdfBytes = await fs.promises.readFile(pdfPath);
         
-        // Dynamic import to avoid startup issues
-        const pdf = (await import('pdf-parse')).default;
+        // Use regular require to avoid triggering pdf-parse debug mode
+        // Dynamic import causes pdf-parse to think it's in debug mode
+        const pdf = require('pdf-parse');
         const data = await pdf(pdfBytes);
         
         return data.text || "";
