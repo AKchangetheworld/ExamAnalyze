@@ -248,16 +248,61 @@ export default function Home() {
     
     setIsProcessing(true);
     
+    // 预估题目数量（可以根据图片大小调整，这里使用默认值）
+    const estimatedQuestions = 8;
+    let currentQuestion = 0;
+    let progressInterval: NodeJS.Timeout | null = null;
+    
     try {
-      // Step 1: Direct AI Analysis (includes OCR)
+      // 开始分析并设置进度模拟
       updateStateAndSave({
+        appState: "processing",
         currentStep: "analysis",
-        progress: { step: "analysis", progress: 50, message: "正在分析试卷（包含文字识别）..." }
+        progress: { 
+          step: "analysis", 
+          progress: 10, 
+          message: "开始AI分析...",
+          currentQuestion: 0,
+          totalQuestions: estimatedQuestions,
+          questionProgress: `准备分析 ${estimatedQuestions} 题`
+        }
       });
 
+      // 启动进度模拟定时器
+      const startTime = Date.now();
+      progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        // 每3秒增加一题，模拟逐题分析
+        const newCurrentQuestion = Math.min(Math.floor(elapsed / 3000) + 1, estimatedQuestions);
+        
+        if (newCurrentQuestion > currentQuestion) {
+          currentQuestion = newCurrentQuestion;
+          const baseProgress = 10;
+          const analysisProgress = (currentQuestion / estimatedQuestions) * 70; // 70% for analysis
+          
+          updateStateAndSave({
+            progress: { 
+              step: "analysis", 
+              progress: baseProgress + analysisProgress, 
+              message: `正在分析第 ${currentQuestion} 题...`,
+              currentQuestion,
+              totalQuestions: estimatedQuestions,
+              questionProgress: `${currentQuestion}/${estimatedQuestions}`
+            }
+          });
+        }
+      }, 1000); // 每秒检查一次
+
+      // 执行实际的AI分析
       const analysisResponse = await resilientFetch(`/api/exam-papers/${paperId}/analyze`, {
         method: 'POST',
       });
+      
+      // 清除进度定时器
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+      }
       
       if (!analysisResponse.ok) {
         const errorText = await analysisResponse.text().catch(() => 'Unknown error');
@@ -276,27 +321,58 @@ export default function Home() {
         throw new Error('分析结果为空或格式错误');
       }
 
-      updateStateAndSave({ progress: { step: "analysis", progress: 100, message: "AI分析完成" } });
+      // 获取实际题目数量
+      const actualQuestions = analysisData.result.questionAnalysis?.length || estimatedQuestions;
+      
+      updateStateAndSave({ 
+        progress: { 
+          step: "analysis", 
+          progress: 90, 
+          message: `分析完成！共 ${actualQuestions} 题`,
+          currentQuestion: actualQuestions,
+          totalQuestions: actualQuestions,
+          questionProgress: `${actualQuestions}/${actualQuestions}`
+        } 
+      });
 
       // Step 3: Results
       updateStateAndSave({
         currentStep: "results",
-        progress: { step: "results", progress: 100, message: "生成分析报告..." }
+        progress: { 
+          step: "results", 
+          progress: 100, 
+          message: "生成分析报告...",
+          currentQuestion: actualQuestions,
+          totalQuestions: actualQuestions,
+          questionProgress: `已完成 ${actualQuestions} 题分析`
+        }
       });
 
       // Ensure atomic update of results and completed state
       updateStateAndSave({
         appState: "completed",
         currentStep: "results",
-        progress: { step: "results", progress: 100, message: "分析完成" },
+        progress: { 
+          step: "results", 
+          progress: 100, 
+          message: "分析完成",
+          currentQuestion: actualQuestions,
+          totalQuestions: actualQuestions,
+          questionProgress: `已完成 ${actualQuestions} 题分析`
+        },
         results: analysisData.result
       });
       
       toast({
         title: "分析完成",
-        description: "试卷已成功分析，查看详细结果吧！",
+        description: `试卷已成功分析，共 ${actualQuestions} 题！`,
       });
     } catch (error) {
+      // 清除进度定时器
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      
       console.error('Processing error:', error, {
         name: error instanceof Error ? error.name : 'Unknown',
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -309,7 +385,10 @@ export default function Home() {
         progress: { 
           step: currentStep, 
           progress: 0, 
-          message: "处理失败" 
+          message: "处理失败",
+          currentQuestion: 0,
+          totalQuestions: 0,
+          questionProgress: "分析中断"
         }
       });
       
@@ -319,6 +398,10 @@ export default function Home() {
         variant: "destructive",
       });
     } finally {
+      // 清理定时器
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
       setIsProcessing(false);
     }
   };

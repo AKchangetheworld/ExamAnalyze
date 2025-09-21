@@ -14,31 +14,35 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 // Helper function to detect image MIME type from filename
 function getImageMimeType(filename: string): string {
-    const ext = filename.toLowerCase().split('.').pop();
+    const ext = filename.toLowerCase().split(".").pop();
     switch (ext) {
-        case 'jpg':
-        case 'jpeg':
-            return 'image/jpeg';
-        case 'png':
-            return 'image/png';
-        case 'webp':
-            return 'image/webp';
-        case 'gif':
-            return 'image/gif';
-        case 'heic':
-            return 'image/heic';
-        case 'heif':
-            return 'image/heif';
+        case "jpg":
+        case "jpeg":
+            return "image/jpeg";
+        case "png":
+            return "image/png";
+        case "webp":
+            return "image/webp";
+        case "gif":
+            return "image/gif";
+        case "heic":
+            return "image/heic";
+        case "heif":
+            return "image/heif";
         default:
-            return 'image/jpeg'; // fallback
+            return "image/jpeg"; // fallback
     }
 }
 
-export async function analyzeExamPaper(imagePath: string, filename?: string): Promise<AnalysisResult> {
+export async function analyzeExamPaper(
+    imagePath: string,
+    filename?: string,
+    progressCallback?: (progress: { currentQuestion: number; totalQuestions: number; message: string }) => void,
+): Promise<AnalysisResult> {
     try {
         const imageBytes = await fs.promises.readFile(imagePath);
-        const mimeType = filename ? getImageMimeType(filename) : 'image/jpeg';
-        
+        const mimeType = filename ? getImageMimeType(filename) : "image/jpeg";
+
         const systemPrompt = `你是一个专业的试卷批改老师。请仔细分析这份试卷图片，提供详细的评分和反馈。
 
 请按照以下JSON格式返回分析结果：
@@ -98,17 +102,21 @@ export async function analyzeExamPaper(imagePath: string, filename?: string): Pr
                         feedback: {
                             type: "object",
                             properties: {
-                                strengths: { 
+                                strengths: {
                                     type: "array",
-                                    items: { type: "string" }
+                                    items: { type: "string" },
                                 },
-                                improvements: { 
+                                improvements: {
                                     type: "array",
-                                    items: { type: "string" }
+                                    items: { type: "string" },
                                 },
-                                detailedFeedback: { type: "string" }
+                                detailedFeedback: { type: "string" },
                             },
-                            required: ["strengths", "improvements", "detailedFeedback"]
+                            required: [
+                                "strengths",
+                                "improvements",
+                                "detailedFeedback",
+                            ],
                         },
                         questionAnalysis: {
                             type: "array",
@@ -123,13 +131,29 @@ export async function analyzeExamPaper(imagePath: string, filename?: string): Pr
                                     userAnswer: { type: "string" },
                                     correctAnswer: { type: "string" },
                                     explanation: { type: "string" },
-                                    isCorrect: { type: "boolean" }
+                                    isCorrect: { type: "boolean" },
                                 },
-                                required: ["questionNumber", "score", "maxScore", "feedback", "questionText", "userAnswer", "correctAnswer", "explanation", "isCorrect"]
-                            }
-                        }
+                                required: [
+                                    "questionNumber",
+                                    "score",
+                                    "maxScore",
+                                    "feedback",
+                                    "questionText",
+                                    "userAnswer",
+                                    "correctAnswer",
+                                    "explanation",
+                                    "isCorrect",
+                                ],
+                            },
+                        },
                     },
-                    required: ["overallScore", "maxScore", "grade", "feedback", "questionAnalysis"]
+                    required: [
+                        "overallScore",
+                        "maxScore",
+                        "grade",
+                        "feedback",
+                        "questionAnalysis",
+                    ],
                 },
             },
             contents: contents,
@@ -140,10 +164,10 @@ export async function analyzeExamPaper(imagePath: string, filename?: string): Pr
 
         if (rawJson) {
             const result: AnalysisResult = JSON.parse(rawJson);
-            
+
             // Normalize grade to ensure ASCII characters only (fixes mobile display issues)
             result.grade = normalizeGrade(result.grade);
-            
+
             return result;
         } else {
             throw new Error("Empty response from Gemini");
@@ -158,12 +182,11 @@ export async function extractTextFromPDF(pdfPath: string): Promise<string> {
     try {
         const pdfBytes = await fs.promises.readFile(pdfPath);
         console.log(`PDF file size: ${pdfBytes.length} bytes`);
-        
+
         // For now, use fallback to image OCR for scanned PDFs
         // since createRequire has TypeScript issues in this environment
         console.log("PDF detected - falling back to OCR analysis");
         return await extractTextFromPDFAsImage(pdfPath);
-        
     } catch (error) {
         console.error("Failed to extract text from PDF:", error);
         throw new Error(`PDF文本提取失败: ${error}`);
@@ -174,7 +197,7 @@ async function extractTextFromPDFAsImage(pdfPath: string): Promise<string> {
     try {
         // Read PDF as binary and send to Gemini for OCR
         const pdfBytes = await fs.promises.readFile(pdfPath);
-        
+
         const contents = [
             {
                 inlineData: {
@@ -191,9 +214,11 @@ async function extractTextFromPDFAsImage(pdfPath: string): Promise<string> {
         });
 
         const extractedText = response.text || "";
-        console.log(`PDF OCR extracted text length: ${extractedText.length} characters`);
+        console.log(
+            `PDF OCR extracted text length: ${extractedText.length} characters`,
+        );
         console.log(`PDF OCR text preview: ${extractedText.substring(0, 100)}`);
-        
+
         return extractedText;
     } catch (error) {
         console.error("Failed to extract text from PDF using OCR:", error);
@@ -201,11 +226,14 @@ async function extractTextFromPDFAsImage(pdfPath: string): Promise<string> {
     }
 }
 
-export async function extractTextFromImage(imagePath: string, filename?: string): Promise<string> {
+export async function extractTextFromImage(
+    imagePath: string,
+    filename?: string,
+): Promise<string> {
     try {
         const imageBytes = await fs.promises.readFile(imagePath);
-        const mimeType = filename ? getImageMimeType(filename) : 'image/jpeg';
-        
+        const mimeType = filename ? getImageMimeType(filename) : "image/jpeg";
+
         const contents = [
             {
                 inlineData: {
@@ -228,7 +256,9 @@ export async function extractTextFromImage(imagePath: string, filename?: string)
     }
 }
 
-export async function analyzeExamText(textContent: string): Promise<AnalysisResult> {
+export async function analyzeExamText(
+    textContent: string,
+): Promise<AnalysisResult> {
     try {
         const systemPrompt = `你是一个专业的试卷批改老师。请仔细分析这份试卷内容，提供详细的评分和反馈。
 
@@ -282,17 +312,21 @@ ${textContent}`;
                         feedback: {
                             type: "object",
                             properties: {
-                                strengths: { 
+                                strengths: {
                                     type: "array",
-                                    items: { type: "string" }
+                                    items: { type: "string" },
                                 },
-                                improvements: { 
+                                improvements: {
                                     type: "array",
-                                    items: { type: "string" }
+                                    items: { type: "string" },
                                 },
-                                detailedFeedback: { type: "string" }
+                                detailedFeedback: { type: "string" },
                             },
-                            required: ["strengths", "improvements", "detailedFeedback"]
+                            required: [
+                                "strengths",
+                                "improvements",
+                                "detailedFeedback",
+                            ],
                         },
                         questionAnalysis: {
                             type: "array",
@@ -307,13 +341,29 @@ ${textContent}`;
                                     userAnswer: { type: "string" },
                                     correctAnswer: { type: "string" },
                                     explanation: { type: "string" },
-                                    isCorrect: { type: "boolean" }
+                                    isCorrect: { type: "boolean" },
                                 },
-                                required: ["questionNumber", "score", "maxScore", "feedback", "questionText", "userAnswer", "correctAnswer", "explanation", "isCorrect"]
-                            }
-                        }
+                                required: [
+                                    "questionNumber",
+                                    "score",
+                                    "maxScore",
+                                    "feedback",
+                                    "questionText",
+                                    "userAnswer",
+                                    "correctAnswer",
+                                    "explanation",
+                                    "isCorrect",
+                                ],
+                            },
+                        },
                     },
-                    required: ["overallScore", "maxScore", "grade", "feedback", "questionAnalysis"]
+                    required: [
+                        "overallScore",
+                        "maxScore",
+                        "grade",
+                        "feedback",
+                        "questionAnalysis",
+                    ],
                 },
             },
             contents: [systemPrompt],
@@ -324,10 +374,10 @@ ${textContent}`;
 
         if (rawJson) {
             const result: AnalysisResult = JSON.parse(rawJson);
-            
+
             // Normalize grade to ensure ASCII characters only (fixes mobile display issues)
             result.grade = normalizeGrade(result.grade);
-            
+
             return result;
         } else {
             throw new Error("Empty response from Gemini");

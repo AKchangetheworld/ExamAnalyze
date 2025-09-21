@@ -50,6 +50,9 @@ export interface UploadProgress {
   step: ProcessingStep;
   progress: number;
   message: string;
+  currentQuestion?: number;  // 当前正在分析的题目号
+  totalQuestions?: number;   // 预估总题目数
+  questionProgress?: string; // 如 "3/10" 表示正在分析第3题，共10题
 }
 
 // Valid grade enum for strict validation

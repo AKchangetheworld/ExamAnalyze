@@ -7,7 +7,6 @@ import fs from "fs";
 import { storage } from "./storage";
 import { analyzeExamPaper, extractTextFromImage, extractTextFromPDF, analyzeExamText } from "./gemini";
 import { insertExamPaperSchema } from "@shared/schema";
-
 // Configure multer for file uploads
 const upload = multer({
   dest: 'uploads/',
@@ -32,6 +31,8 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  const httpServer = createServer(app);
+  
   // Create uploads directory if it doesn't exist
   if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
@@ -258,8 +259,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: '获取错题失败' });
     }
   });
-
-  const httpServer = createServer(app);
 
   return httpServer;
 }
