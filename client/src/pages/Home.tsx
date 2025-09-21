@@ -351,11 +351,26 @@ export default function Home() {
         throw new Error('分析结果为空或格式错误');
       }
 
-      // 验证题目数量准确性
+      // 验证题目数量准确性并纠正进度显示
       const finalQuestions = analysisData.result.questionAnalysis?.length || actualQuestions;
       if (finalQuestions !== actualQuestions) {
         console.log(`Question count adjusted: ${actualQuestions} -> ${finalQuestions}`);
         actualQuestions = finalQuestions;
+        
+        // 重新计算并更新进度显示，纠正之前基于错误计数的进度
+        updateStateAndSave({ 
+          progress: { 
+            step: "analysis", 
+            progress: 85, 
+            message: `题目数量已纠正：实际 ${actualQuestions} 题`,
+            currentQuestion: actualQuestions,
+            totalQuestions: actualQuestions,
+            questionProgress: `${actualQuestions}/${actualQuestions}`
+          } 
+        });
+        
+        // 给用户一个短暂的时间来看到纠正信息
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
       updateStateAndSave({ 
