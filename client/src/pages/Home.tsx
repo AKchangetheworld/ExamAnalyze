@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type AppState = "idle" | "uploading" | "processing" | "completed" | "error";
+type AppState = "idle" | "uploading" | "processing" | "completed" | "error" | "analysis_options";
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>("idle");
@@ -105,9 +105,9 @@ export default function Home() {
       serverImageUrl: newState.serverImageUrl ?? serverImageUrl,
     };
     
-    // Save state for uploading, processing, completed, and error states
+    // Save state for uploading, processing, analysis_options, completed, and error states
     // Only clear state when explicitly requested (forceClear) or transitioning to idle
-    if (currentState.appState === 'uploading' || currentState.appState === 'processing' || currentState.appState === 'completed' || currentState.appState === 'error') {
+    if (currentState.appState === 'uploading' || currentState.appState === 'processing' || currentState.appState === 'analysis_options' || currentState.appState === 'completed' || currentState.appState === 'error') {
       saveStateToStorage(currentState);
     } else if (currentState.appState === 'idle' || forceClear) {
       clearSavedState();
@@ -247,7 +247,6 @@ export default function Home() {
     }
     
     setIsProcessing(true);
-    let progressInterval: NodeJS.Timeout | null = null;
     let actualQuestions = 8; // fallback
     
     try {
@@ -283,56 +282,34 @@ export default function Home() {
         console.warn('Question counting error:', countError, 'using fallback count');
       }
 
-      // Stage 2: Detailed analysis with real question count
-      let currentQuestion = 0;
-      
+      // Stage 2: AI深度分析阶段 (透明进度显示)
       updateStateAndSave({
         progress: { 
           step: "analysis", 
-          progress: 10, 
-          message: `开始分析 ${actualQuestions} 题...`,
+          progress: 20, 
+          message: `正在进行AI深度分析 (${actualQuestions} 题)...`,
           currentQuestion: 0,
           totalQuestions: actualQuestions,
-          questionProgress: `准备分析 ${actualQuestions} 题`
+          questionProgress: "AI分析中，请稍候..."
         }
       });
-
-      // 启动基于真实题目数的进度模拟定时器
-      const startTime = Date.now();
-      progressInterval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        // 根据题目数量动态调整每题分析时间（2-4秒/题）
-        const timePerQuestion = Math.max(2000, Math.min(4000, 24000 / actualQuestions));
-        const newCurrentQuestion = Math.min(Math.floor(elapsed / timePerQuestion) + 1, actualQuestions);
-        
-        if (newCurrentQuestion > currentQuestion) {
-          currentQuestion = newCurrentQuestion;
-          const baseProgress = 10;
-          const analysisProgress = (currentQuestion / actualQuestions) * 70; // 70% for analysis
-          
-          updateStateAndSave({
-            progress: { 
-              step: "analysis", 
-              progress: baseProgress + analysisProgress, 
-              message: `正在分析第 ${currentQuestion} 题...`,
-              currentQuestion,
-              totalQuestions: actualQuestions,
-              questionProgress: `${currentQuestion}/${actualQuestions}`
-            }
-          });
-        }
-      }, 1000); // 每秒检查一次
 
       // 执行实际的AI详细分析
       const analysisResponse = await resilientFetch(`/api/exam-papers/${paperId}/analyze`, {
         method: 'POST',
       });
       
-      // 清除进度定时器
-      if (progressInterval) {
-        clearInterval(progressInterval);
-        progressInterval = null;
-      }
+      // AI分析完成，更新进度
+      updateStateAndSave({
+        progress: { 
+          step: "analysis", 
+          progress: 90, 
+          message: "AI分析完成，正在生成报告...",
+          currentQuestion: actualQuestions,
+          totalQuestions: actualQuestions,
+          questionProgress: `完成 ${actualQuestions} 题分析`
+        }
+      });
       
       if (!analysisResponse.ok) {
         const errorText = await analysisResponse.text().catch(() => 'Unknown error');
@@ -351,76 +328,30 @@ export default function Home() {
         throw new Error('分析结果为空或格式错误');
       }
 
-      // 验证题目数量准确性并纠正进度显示
+      // 获取最终题目数量
       const finalQuestions = analysisData.result.questionAnalysis?.length || actualQuestions;
-      if (finalQuestions !== actualQuestions) {
-        console.log(`Question count adjusted: ${actualQuestions} -> ${finalQuestions}`);
-        actualQuestions = finalQuestions;
-        
-        // 重新计算并更新进度显示，纠正之前基于错误计数的进度
-        updateStateAndSave({ 
-          progress: { 
-            step: "analysis", 
-            progress: 85, 
-            message: `题目数量已纠正：实际 ${actualQuestions} 题`,
-            currentQuestion: actualQuestions,
-            totalQuestions: actualQuestions,
-            questionProgress: `${actualQuestions}/${actualQuestions}`
-          } 
-        });
-        
-        // 给用户一个短暂的时间来看到纠正信息
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      
-      updateStateAndSave({ 
-        progress: { 
-          step: "analysis", 
-          progress: 90, 
-          message: `分析完成！共 ${actualQuestions} 题`,
-          currentQuestion: actualQuestions,
-          totalQuestions: actualQuestions,
-          questionProgress: `${actualQuestions}/${actualQuestions}`
-        } 
-      });
 
       // Step 3: Results
+      // 显示分析完成，让用户选择查看结果的方式
       updateStateAndSave({
+        appState: "analysis_options",
         currentStep: "results",
         progress: { 
           step: "results", 
           progress: 100, 
-          message: "生成分析报告...",
-          currentQuestion: actualQuestions,
-          totalQuestions: actualQuestions,
-          questionProgress: `已完成 ${actualQuestions} 题分析`
-        }
-      });
-
-      // Ensure atomic update of results and completed state
-      updateStateAndSave({
-        appState: "completed",
-        currentStep: "results",
-        progress: { 
-          step: "results", 
-          progress: 100, 
-          message: "分析完成",
-          currentQuestion: actualQuestions,
-          totalQuestions: actualQuestions,
-          questionProgress: `已完成 ${actualQuestions} 题分析`
+          message: "分析完成！请选择查看方式",
+          currentQuestion: finalQuestions,
+          totalQuestions: finalQuestions,
+          questionProgress: `已完成 ${finalQuestions} 题分析`
         },
         results: analysisData.result
       });
       
       toast({
         title: "分析完成",
-        description: `试卷已成功分析，共 ${actualQuestions} 题！`,
+        description: `试卷已成功分析，共 ${finalQuestions} 题！请选择查看方式`,
       });
     } catch (error) {
-      // 清除进度定时器
-      if (progressInterval) {
-        clearInterval(progressInterval);
-      }
       
       console.error('Processing error:', error, {
         name: error instanceof Error ? error.name : 'Unknown',
@@ -447,10 +378,6 @@ export default function Home() {
         variant: "destructive",
       });
     } finally {
-      // 清理定时器
-      if (progressInterval) {
-        clearInterval(progressInterval);
-      }
       setIsProcessing(false);
     }
   };
@@ -799,6 +726,95 @@ export default function Home() {
                 <RotateCcw className="w-4 h-4 mr-2" />
                 重新上传试卷
               </Button>
+            </div>
+          </div>
+        )}
+
+        {appState === "analysis_options" && (
+          <div className="space-y-6">
+            {/* Image Preview */}
+            {imagePreviewUrl && (
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-gray-900 p-3 rounded-lg border shadow-sm">
+                  <img 
+                    src={imagePreviewUrl} 
+                    alt="试卷预览" 
+                    className="w-full h-auto max-h-64 object-contain rounded mx-auto"
+                    data-testid="image-preview"
+                  />
+                  <p className="text-center text-xs text-muted-foreground mt-2">
+                    试卷预览
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Analysis Options */}
+            <div className="space-y-6 py-8">
+              <div className="text-center space-y-2">
+                <h2 className="text-xl font-semibold">分析完成！请选择查看方式</h2>
+                <p className="text-muted-foreground">
+                  您可以选择快速查看核心结果，或查看完整的详细分析报告
+                </p>
+              </div>
+
+              <div className="grid gap-4">
+                <Button
+                  variant="default"
+                  className="w-full h-16 text-left"
+                  onClick={() => {
+                    updateStateAndSave({
+                      appState: "completed"
+                    });
+                  }}
+                  data-testid="button-view-detailed"
+                >
+                  <div className="flex flex-col items-start">
+                    <span className="font-semibold">查看详细分析</span>
+                    <span className="text-sm opacity-90">包含详细题目分析、错误原因和学习建议</span>
+                  </div>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  className="w-full h-16 text-left"
+                  onClick={() => {
+                    // 快速查看：只显示总分和等级
+                    const quickResult = {
+                      overallScore: results?.overallScore || 0,
+                      maxScore: results?.maxScore || 100,
+                      grade: results?.grade || 'C',
+                      feedback: {
+                        strengths: results?.feedback?.strengths?.slice(0, 2) || [],
+                        improvements: results?.feedback?.improvements?.slice(0, 2) || [],
+                        detailedFeedback: "快速查看模式 - 如需详细分析请选择完整报告"
+                      },
+                      questionAnalysis: []
+                    };
+                    updateStateAndSave({
+                      appState: "completed",
+                      results: quickResult
+                    });
+                  }}
+                  data-testid="button-view-quick"
+                >
+                  <div className="flex flex-col items-start">
+                    <span className="font-semibold">快速查看结果</span>
+                    <span className="text-sm opacity-70">只显示总分、等级和核心反馈</span>
+                  </div>
+                </Button>
+              </div>
+
+              <div className="text-center">
+                <Button
+                  variant="ghost"
+                  onClick={handleStartOver}
+                  data-testid="button-start-over"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  分析新试卷
+                </Button>
+              </div>
             </div>
           </div>
         )}
