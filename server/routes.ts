@@ -11,7 +11,7 @@ import { insertExamPaperSchema } from "@shared/schema";
 const upload = multer({
   dest: 'uploads/',
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 30 * 1024 * 1024, // 30MB limit
   },
   fileFilter: (req, file, cb) => {
     // Support various image and PDF MIME types
