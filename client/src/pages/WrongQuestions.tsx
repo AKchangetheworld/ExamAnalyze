@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, BookOpen, Target, Lightbulb, Calendar, Home } from "lucide-react";
+import { AlertCircle, BookOpen, Target, Lightbulb, Calendar, Home, BarChart3 } from "lucide-react";
 import { Link } from "wouter";
 
 export default function WrongQuestions() {
@@ -52,15 +52,23 @@ export default function WrongQuestions() {
             <AlertCircle className="h-8 w-8 text-destructive" />
             错题本
           </h1>
-          <Link href="/">
-            <Button variant="outline" className="gap-2" data-testid="button-back-home">
-              <Home className="h-4 w-4" />
-              返回主页
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/wrong-questions/classified">
+              <Button variant="default" className="gap-2" data-testid="button-view-classified">
+                <BarChart3 className="h-4 w-4" />
+                归类分析
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button variant="outline" className="gap-2" data-testid="button-back-home">
+                <Home className="h-4 w-4" />
+                返回主页
+              </Button>
+            </Link>
+          </div>
         </div>
         <p className="text-muted-foreground">
-          总共 {wrongQuestions.length} 道错题，温故而知新
+          总共 {wrongQuestions.length} 道错题，温故而知新 • <Link href="/wrong-questions/classified" className="text-primary hover:underline">查看归类分析</Link>
         </p>
       </div>
 

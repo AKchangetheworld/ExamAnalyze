@@ -96,6 +96,19 @@ export interface WrongQuestion {
   examDate: string;
 }
 
+// Classification types for wrong questions
+export interface WrongQuestionClassification {
+  byKnowledgePoint: Record<string, WrongQuestion[]>;
+  byErrorType: Record<string, WrongQuestion[]>;
+  byDifficulty: Record<string, WrongQuestion[]>;
+  summary: {
+    totalQuestions: number;
+    knowledgePoints: string[];
+    errorTypes: string[];
+    difficultyLevels: string[];
+  };
+}
+
 // Helper function to normalize grade strings (fixes Unicode variant issues)
 export function normalizeGrade(grade: string): ValidGrade {
   if (!grade) return 'F';
