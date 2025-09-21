@@ -247,38 +247,68 @@ export default function Home() {
     }
     
     setIsProcessing(true);
-    
-    // 预估题目数量（可以根据图片大小调整，这里使用默认值）
-    const estimatedQuestions = 8;
-    let currentQuestion = 0;
     let progressInterval: NodeJS.Timeout | null = null;
+    let actualQuestions = 8; // fallback
     
     try {
-      // 开始分析并设置进度模拟
+      // Stage 1: Quick question count
       updateStateAndSave({
         appState: "processing",
         currentStep: "analysis",
         progress: { 
           step: "analysis", 
-          progress: 10, 
-          message: "开始AI分析...",
+          progress: 5, 
+          message: "识别题目数量...",
           currentQuestion: 0,
-          totalQuestions: estimatedQuestions,
-          questionProgress: `准备分析 ${estimatedQuestions} 题`
+          totalQuestions: 0,
+          questionProgress: "正在识别题目..."
         }
       });
 
-      // 启动进度模拟定时器
+      try {
+        const countResponse = await resilientFetch(`/api/exam-papers/${paperId}/count-questions`, {
+          method: 'POST',
+        });
+        
+        if (countResponse.ok) {
+          const countData = await countResponse.json();
+          if (countData.success && typeof countData.questionCount === 'number') {
+            actualQuestions = countData.questionCount;
+            console.log(`Stage 1: Detected ${actualQuestions} questions`);
+          }
+        } else {
+          console.warn('Question counting failed, using fallback count');
+        }
+      } catch (countError) {
+        console.warn('Question counting error:', countError, 'using fallback count');
+      }
+
+      // Stage 2: Detailed analysis with real question count
+      let currentQuestion = 0;
+      
+      updateStateAndSave({
+        progress: { 
+          step: "analysis", 
+          progress: 10, 
+          message: `开始分析 ${actualQuestions} 题...`,
+          currentQuestion: 0,
+          totalQuestions: actualQuestions,
+          questionProgress: `准备分析 ${actualQuestions} 题`
+        }
+      });
+
+      // 启动基于真实题目数的进度模拟定时器
       const startTime = Date.now();
       progressInterval = setInterval(() => {
         const elapsed = Date.now() - startTime;
-        // 每3秒增加一题，模拟逐题分析
-        const newCurrentQuestion = Math.min(Math.floor(elapsed / 3000) + 1, estimatedQuestions);
+        // 根据题目数量动态调整每题分析时间（2-4秒/题）
+        const timePerQuestion = Math.max(2000, Math.min(4000, 24000 / actualQuestions));
+        const newCurrentQuestion = Math.min(Math.floor(elapsed / timePerQuestion) + 1, actualQuestions);
         
         if (newCurrentQuestion > currentQuestion) {
           currentQuestion = newCurrentQuestion;
           const baseProgress = 10;
-          const analysisProgress = (currentQuestion / estimatedQuestions) * 70; // 70% for analysis
+          const analysisProgress = (currentQuestion / actualQuestions) * 70; // 70% for analysis
           
           updateStateAndSave({
             progress: { 
@@ -286,14 +316,14 @@ export default function Home() {
               progress: baseProgress + analysisProgress, 
               message: `正在分析第 ${currentQuestion} 题...`,
               currentQuestion,
-              totalQuestions: estimatedQuestions,
-              questionProgress: `${currentQuestion}/${estimatedQuestions}`
+              totalQuestions: actualQuestions,
+              questionProgress: `${currentQuestion}/${actualQuestions}`
             }
           });
         }
       }, 1000); // 每秒检查一次
 
-      // 执行实际的AI分析
+      // 执行实际的AI详细分析
       const analysisResponse = await resilientFetch(`/api/exam-papers/${paperId}/analyze`, {
         method: 'POST',
       });
@@ -321,8 +351,12 @@ export default function Home() {
         throw new Error('分析结果为空或格式错误');
       }
 
-      // 获取实际题目数量
-      const actualQuestions = analysisData.result.questionAnalysis?.length || estimatedQuestions;
+      // 验证题目数量准确性
+      const finalQuestions = analysisData.result.questionAnalysis?.length || actualQuestions;
+      if (finalQuestions !== actualQuestions) {
+        console.log(`Question count adjusted: ${actualQuestions} -> ${finalQuestions}`);
+        actualQuestions = finalQuestions;
+      }
       
       updateStateAndSave({ 
         progress: { 

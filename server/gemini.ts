@@ -34,6 +34,57 @@ function getImageMimeType(filename: string): string {
     }
 }
 
+export async function countQuestions(
+    imagePath: string,
+    filename?: string,
+): Promise<number> {
+    try {
+        const imageBytes = await fs.promises.readFile(imagePath);
+        const mimeType = filename ? getImageMimeType(filename) : "image/jpeg";
+
+        const systemPrompt = `你是一个专业的试卷题目计数助手。请快速扫描这份试卷，仅识别并计算题目总数。
+
+请只返回一个数字，表示试卷中的题目总数。不需要分析题目内容或提供其他信息。
+
+注意：
+1. 仔细识别所有题目编号（如：1. 2. 3. 或 一、二、三、等）
+2. 包括选择题、填空题、解答题等所有类型
+3. 如果有子题（如1-1, 1-2），每个子题都算作独立题目
+4. 只返回数字，不要包含其他文字`;
+
+        const contents = [
+            {
+                inlineData: {
+                    data: imageBytes.toString("base64"),
+                    mimeType: mimeType,
+                },
+            },
+            systemPrompt,
+        ];
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: contents,
+        });
+
+        const responseText = (response.text || "").trim();
+        const questionCount = parseInt(responseText);
+        
+        // Validation: ensure we got a reasonable number
+        if (isNaN(questionCount) || questionCount < 1 || questionCount > 100) {
+            console.warn(`Invalid question count response: "${responseText}". Using default count of 8.`);
+            return 8; // fallback to original default
+        }
+        
+        console.log(`Counted ${questionCount} questions in the exam paper`);
+        return questionCount;
+    } catch (error) {
+        console.error("Failed to count questions:", error);
+        // Return fallback count on error
+        return 8;
+    }
+}
+
 export async function analyzeExamPaper(
     imagePath: string,
     filename?: string,

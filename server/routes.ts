@@ -5,7 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { analyzeExamPaper, extractTextFromImage, extractTextFromPDF, analyzeExamText } from "./gemini";
+import { analyzeExamPaper, extractTextFromImage, extractTextFromPDF, analyzeExamText, countQuestions } from "./gemini";
 import { insertExamPaperSchema } from "@shared/schema";
 // Configure multer for file uploads
 const upload = multer({
@@ -142,6 +142,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analyze exam paper with AI (combined OCR + Analysis)
+  // Count questions in exam paper
+  app.post('/api/exam-papers/:id/count-questions', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const examPaper = await storage.getExamPaper(id);
+      
+      if (!examPaper) {
+        return res.status(404).json({ error: '试卷不存在' });
+      }
+
+      if (!examPaper.filePath) {
+        return res.status(404).json({ error: '试卷文件路径未找到' });
+      }
+
+      if (!fs.existsSync(examPaper.filePath)) {
+        return res.status(404).json({ error: '上传的文件未找到' });
+      }
+
+      const filePath = examPaper.filePath;
+      
+      // Count questions using fast AI counting
+      const questionCount = await countQuestions(filePath, examPaper.filename);
+      
+      console.log(`Quick count: Found ${questionCount} questions in exam paper ${id}`);
+
+      res.json({ 
+        success: true, 
+        questionCount,
+        message: `检测到 ${questionCount} 题`
+      });
+    } catch (error) {
+      console.error('Question counting error:', error);
+      
+      // Handle specific API errors
+      if (error instanceof Error && error.message.includes('503')) {
+        res.status(503).json({ error: '服务暂时过载，请稍后重试' });
+      } else if (error instanceof Error && error.message.includes('429')) {
+        res.status(429).json({ error: '请求过于频繁，请稍后重试' });
+      } else {
+        res.status(500).json({ error: '题目计数失败' });
+      }
+    }
+  });
+
   app.post('/api/exam-papers/:id/analyze', async (req, res) => {
     try {
       const { id } = req.params;
