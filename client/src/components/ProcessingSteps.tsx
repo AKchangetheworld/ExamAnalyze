@@ -1,4 +1,4 @@
-import { Check, Upload, Scan, Brain, FileText } from "lucide-react";
+import { Check, Upload, Scan, Brain, FileText, Clipboard } from "lucide-react";
 import { ProcessingStep } from "@shared/schema";
 
 interface ProcessingStepsProps {
@@ -11,6 +11,7 @@ const steps = [
   { key: "upload" as ProcessingStep, label: "上传", icon: Upload },
   { key: "ocr" as ProcessingStep, label: "识别", icon: Scan },
   { key: "analysis" as ProcessingStep, label: "分析", icon: Brain },
+  { key: "generating" as ProcessingStep, label: "生成", icon: Clipboard },
   { key: "results" as ProcessingStep, label: "结果", icon: FileText },
 ];
 

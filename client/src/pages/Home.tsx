@@ -376,7 +376,7 @@ export default function Home() {
       updateStateAndSave({ 
         progress: { 
           step: "analysis", 
-          progress: 90, 
+          progress: 85, 
           message: `分析完成！共 ${actualQuestions} 题`,
           currentQuestion: actualQuestions,
           totalQuestions: actualQuestions,
@@ -384,13 +384,43 @@ export default function Home() {
         } 
       });
 
-      // Step 3: Results
+      // Step 3: Generate Report
+      updateStateAndSave({
+        currentStep: "generating",
+        progress: { 
+          step: "generating", 
+          progress: 90, 
+          message: "正在生成详细报告...",
+          currentQuestion: actualQuestions,
+          totalQuestions: actualQuestions,
+          questionProgress: `已完成 ${actualQuestions} 题分析`
+        }
+      });
+
+      // 模拟报告生成进度
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      updateStateAndSave({
+        currentStep: "generating",
+        progress: { 
+          step: "generating", 
+          progress: 95, 
+          message: "整理分析结果...",
+          currentQuestion: actualQuestions,
+          totalQuestions: actualQuestions,
+          questionProgress: `已完成 ${actualQuestions} 题分析`
+        }
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Step 4: Results
       updateStateAndSave({
         currentStep: "results",
         progress: { 
           step: "results", 
           progress: 100, 
-          message: "生成分析报告...",
+          message: "报告生成完成！",
           currentQuestion: actualQuestions,
           totalQuestions: actualQuestions,
           questionProgress: `已完成 ${actualQuestions} 题分析`
