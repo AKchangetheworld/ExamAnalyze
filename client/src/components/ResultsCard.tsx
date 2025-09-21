@@ -8,8 +8,10 @@ import { useState } from "react";
 
 interface ResultsCardProps {
   result: AnalysisResult;
+  viewMode?: "detailed" | "quick";
   onDownload?: () => void;
   onShare?: () => void;
+  onToggleMode?: () => void;
   className?: string;
 }
 
@@ -22,7 +24,7 @@ function getGradeColor(grade: string) {
   }
 }
 
-export default function ResultsCard({ result, onDownload, onShare, className = "" }: ResultsCardProps) {
+export default function ResultsCard({ result, viewMode = "detailed", onDownload, onShare, onToggleMode, className = "" }: ResultsCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const scorePercentage = (result.overallScore / result.maxScore) * 100;
 
@@ -85,7 +87,7 @@ export default function ResultsCard({ result, onDownload, onShare, className = "
             <div>
               <p className="text-sm font-medium">做得好的地方</p>
               <ul className="text-xs text-muted-foreground mt-1 space-y-1">
-                {result.feedback.strengths.map((strength, index) => (
+                {(viewMode === "quick" ? result.feedback.strengths.slice(0, 2) : result.feedback.strengths).map((strength, index) => (
                   <li key={index}>• {strength}</li>
                 ))}
               </ul>
@@ -97,7 +99,7 @@ export default function ResultsCard({ result, onDownload, onShare, className = "
             <div>
               <p className="text-sm font-medium">可以改进的地方</p>
               <ul className="text-xs text-muted-foreground mt-1 space-y-1">
-                {result.feedback.improvements.map((improvement, index) => (
+                {(viewMode === "quick" ? result.feedback.improvements.slice(0, 2) : result.feedback.improvements).map((improvement, index) => (
                   <li key={index}>• {improvement}</li>
                 ))}
               </ul>
@@ -105,42 +107,58 @@ export default function ResultsCard({ result, onDownload, onShare, className = "
           </div>
         </div>
 
-        {/* Detailed Analysis Toggle */}
-        <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" className="w-full" data-testid="button-toggle-details">
-              {isExpanded ? '收起详细分析' : '展开详细分析'}
+        {/* View Mode Toggle */}
+        {onToggleMode && (
+          <div className="text-center">
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={onToggleMode}
+              data-testid="button-toggle-view-mode"
+            >
+              {viewMode === "quick" ? "查看详细分析" : "返回快速查看"}
             </Button>
-          </CollapsibleTrigger>
-          
-          <CollapsibleContent className="space-y-4 mt-4">
-            {/* Detailed Feedback */}
-            <div>
-              <h4 className="text-sm font-medium mb-2">详细点评</h4>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {result.feedback.detailedFeedback}
-              </p>
-            </div>
+          </div>
+        )}
 
-            {/* Question Analysis */}
-            <div>
-              <h4 className="text-sm font-medium mb-3">题目分析</h4>
-              <div className="space-y-3">
-                {result.questionAnalysis.map((qa, index) => (
-                  <div key={index} className="bg-muted/50 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">第 {qa.questionNumber} 题</span>
-                      <Badge variant="secondary" className="text-xs">
-                        {qa.score}/{qa.maxScore}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{qa.feedback}</p>
-                  </div>
-                ))}
+        {/* Detailed Analysis Section - Only show in detailed mode */}
+        {viewMode === "detailed" && (
+          <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" className="w-full" data-testid="button-toggle-details">
+                {isExpanded ? '收起详细分析' : '展开详细分析'}
+              </Button>
+            </CollapsibleTrigger>
+            
+            <CollapsibleContent className="space-y-4 mt-4">
+              {/* Detailed Feedback */}
+              <div>
+                <h4 className="text-sm font-medium mb-2">详细点评</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {result.feedback.detailedFeedback}
+                </p>
               </div>
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
+
+              {/* Question Analysis */}
+              <div>
+                <h4 className="text-sm font-medium mb-3">题目分析</h4>
+                <div className="space-y-3">
+                  {result.questionAnalysis.map((qa, index) => (
+                    <div key={index} className="bg-muted/50 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">第 {qa.questionNumber} 题</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {qa.score}/{qa.maxScore}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{qa.feedback}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         {/* Action Buttons */}
         <div className="flex gap-2 pt-2">

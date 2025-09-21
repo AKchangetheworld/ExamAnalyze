@@ -10,6 +10,7 @@ import { RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type AppState = "idle" | "uploading" | "processing" | "completed" | "error" | "analysis_options";
+type ViewMode = "detailed" | "quick";
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>("idle");
@@ -20,6 +21,7 @@ export default function Home() {
     message: "准备上传..."
   });
   const [results, setResults] = useState<AnalysisResult | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("detailed");
   const [examPaperId, setExamPaperId] = useState<string | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [serverImageUrl, setServerImageUrl] = useState<string | null>(null);
@@ -36,6 +38,7 @@ export default function Home() {
     progress: UploadProgress;
     examPaperId: string | null;
     results: AnalysisResult | null;
+    viewMode: ViewMode;
     imagePreviewUrl: string | null;
     serverImageUrl: string | null;
   }) => {
@@ -82,6 +85,7 @@ export default function Home() {
     progress: UploadProgress;
     examPaperId: string | null;
     results: AnalysisResult | null;
+    viewMode: ViewMode;
     imagePreviewUrl: string | null;
     serverImageUrl: string | null;
   }>, forceClear = false) => {
@@ -91,6 +95,7 @@ export default function Home() {
     if (newState.progress !== undefined) setProgress(newState.progress);
     if (newState.examPaperId !== undefined) setExamPaperId(newState.examPaperId);
     if (newState.results !== undefined) setResults(newState.results);
+    if (newState.viewMode !== undefined) setViewMode(newState.viewMode);
     if (newState.imagePreviewUrl !== undefined) setImagePreviewUrl(newState.imagePreviewUrl);
     if (newState.serverImageUrl !== undefined) setServerImageUrl(newState.serverImageUrl);
 
@@ -101,6 +106,7 @@ export default function Home() {
       progress: newState.progress ?? progress,
       examPaperId: newState.examPaperId ?? examPaperId,
       results: newState.results ?? results,
+      viewMode: newState.viewMode ?? viewMode,
       imagePreviewUrl: newState.imagePreviewUrl ?? imagePreviewUrl,
       serverImageUrl: newState.serverImageUrl ?? serverImageUrl,
     };
@@ -162,6 +168,7 @@ export default function Home() {
       setProgress(savedState.progress);
       setExamPaperId(savedState.examPaperId);
       setResults(savedState.results);
+      setViewMode(savedState.viewMode || "detailed"); // Default to detailed if not saved
       if (savedState.imagePreviewUrl) {
         setImagePreviewUrl(savedState.imagePreviewUrl);
       }
@@ -764,7 +771,8 @@ export default function Home() {
                   className="w-full h-16 text-left"
                   onClick={() => {
                     updateStateAndSave({
-                      appState: "completed"
+                      appState: "completed",
+                      viewMode: "detailed"
                     });
                   }}
                   data-testid="button-view-detailed"
@@ -779,21 +787,9 @@ export default function Home() {
                   variant="outline"
                   className="w-full h-16 text-left"
                   onClick={() => {
-                    // 快速查看：只显示总分和等级
-                    const quickResult = {
-                      overallScore: results?.overallScore || 0,
-                      maxScore: results?.maxScore || 100,
-                      grade: results?.grade || 'C',
-                      feedback: {
-                        strengths: results?.feedback?.strengths?.slice(0, 2) || [],
-                        improvements: results?.feedback?.improvements?.slice(0, 2) || [],
-                        detailedFeedback: "快速查看模式 - 如需详细分析请选择完整报告"
-                      },
-                      questionAnalysis: []
-                    };
                     updateStateAndSave({
                       appState: "completed",
-                      results: quickResult
+                      viewMode: "quick"
                     });
                   }}
                   data-testid="button-view-quick"
@@ -842,8 +838,14 @@ export default function Home() {
                 
                 <ResultsCard 
                   result={results} 
+                  viewMode={viewMode}
                   onDownload={handleDownload}
                   onShare={handleShare}
+                  onToggleMode={() => {
+                    updateStateAndSave({
+                      viewMode: viewMode === "detailed" ? "quick" : "detailed"
+                    });
+                  }}
                 />
                 
                 <Button
