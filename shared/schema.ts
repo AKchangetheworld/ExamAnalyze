@@ -44,7 +44,7 @@ export type InsertExamPaper = z.infer<typeof insertExamPaperSchema>;
 export type ExamPaper = typeof examPapers.$inferSelect;
 
 // Frontend types for processing states
-export type ProcessingStep = "upload" | "ocr" | "analysis" | "generating" | "results";
+export type ProcessingStep = "upload" | "ocr" | "analysis" | "results";
 
 export interface UploadProgress {
   step: ProcessingStep;
