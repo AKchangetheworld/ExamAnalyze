@@ -26,8 +26,8 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false); // Guard against concurrent processing
   const { toast } = useToast();
 
-  // SessionStorage key for persistence
-  const STORAGE_KEY = 'exam-analysis-state';
+  // SessionStorage key for persistence (v2 to invalidate old buggy cache)
+  const STORAGE_KEY = 'exam-analysis-state-v2';
 
   // Save state to sessionStorage
   const saveStateToStorage = (state: {
@@ -53,6 +53,15 @@ export default function Home() {
   // Load state from sessionStorage
   const loadStateFromStorage = () => {
     try {
+      // Clean up old buggy cache first
+      const oldKeys = ['exam-analysis-state'];
+      oldKeys.forEach(key => {
+        if (sessionStorage.getItem(key)) {
+          sessionStorage.removeItem(key);
+          console.log(`🧹 Cleaned up old cache key: ${key}`);
+        }
+      });
+
       const saved = sessionStorage.getItem(STORAGE_KEY);
       console.log('🔍 Loading from sessionStorage, raw data:', saved);
       if (saved) {
