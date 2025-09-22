@@ -248,7 +248,9 @@ export default function Home() {
     
     setIsProcessing(true);
     let progressInterval: NodeJS.Timeout | null = null;
-    let actualQuestions = 5; // more reasonable fallback
+    let actualQuestions: number | null = null; // No hardcoded fallback
+    let countingMethod: string = "unknown";
+    let countConfidence: string = "unknown";
     
     try {
       // Stage 1: Quick question count
@@ -274,13 +276,16 @@ export default function Home() {
           const countData = await countResponse.json();
           if (countData.success && typeof countData.questionCount === 'number') {
             actualQuestions = countData.questionCount;
-            console.log(`Stage 1: Detected ${actualQuestions} questions using ${countData.method} (confidence: ${countData.confidence})`);
+            countingMethod = countData.method || "unknown";
+            countConfidence = countData.confidence || "unknown";
+            
+            console.log(`Stage 1: Detected ${actualQuestions} questions using ${countingMethod} (confidence: ${countConfidence})`);
             
             // Show appropriate message based on confidence and method
             let countMessage = `检测到 ${actualQuestions} 题`;
-            if (countData.confidence === 'low') {
+            if (countConfidence === 'low') {
               countMessage += ' (可信度较低)';
-            } else if (countData.method === 'ocr_regex') {
+            } else if (countingMethod === 'ocr_regex') {
               countMessage += ' (OCR识别)';
             } else {
               countMessage += ' (AI分析)';
@@ -301,7 +306,7 @@ export default function Home() {
                 progress: 8, 
                 message: countMessage,
                 currentQuestion: 0,
-                totalQuestions: actualQuestions,
+                totalQuestions: actualQuestions!,
                 questionProgress: `${countMessage}`
               }
             });
@@ -310,51 +315,77 @@ export default function Home() {
           // Count failed but request was valid
           const errorData = await countResponse.json();
           console.warn('Question counting failed:', errorData.warning || errorData.message);
+          countingMethod = errorData.method || "unknown";
+          countConfidence = "low";
           
           toast({
             title: "题目计数失败",
-            description: errorData.message || "无法准确统计题目数量，将使用预估值进行分析",
+            description: errorData.message || "无法准确统计题目数量，需要手动指定",
             variant: "destructive",
           });
           
-          updateStateAndSave({
-            progress: { 
-              step: "analysis", 
-              progress: 8, 
-              message: "题目计数不确定，使用预估值分析",
-              currentQuestion: 0,
-              totalQuestions: actualQuestions,
-              questionProgress: `预估 ${actualQuestions} 题 (计数不确定)`
-            }
-          });
+          // Set actualQuestions to null to handle uncertain state
+          actualQuestions = null;
         } else {
-          console.warn('Question counting request failed, using fallback count');
+          console.warn('Question counting request failed');
+          countingMethod = "unknown";
+          countConfidence = "low";
+          
           toast({
             title: "题目计数服务异常",
-            description: "无法连接计数服务，使用默认值继续分析",
+            description: "无法连接计数服务，需要手动指定题目数量",
             variant: "destructive",
           });
+          
+          // Set actualQuestions to null to handle uncertain state
+          actualQuestions = null;
         }
       } catch (countError) {
-        console.warn('Question counting error:', countError, 'using fallback count');
+        console.warn('Question counting error:', countError);
+        countingMethod = "unknown";
+        countConfidence = "low";
+        
         toast({
           title: "题目计数错误",
-          description: "计数过程出现错误，使用默认值继续分析",
+          description: "计数过程出现错误，需要手动指定题目数量",
           variant: "destructive",
         });
+        
+        // Set actualQuestions to null to handle uncertain state
+        actualQuestions = null;
+      }
+
+      // Handle uncertain question count
+      if (actualQuestions === null) {
+        // Could not determine question count - skip detailed analysis for now
+        updateStateAndSave({
+          appState: "error",
+          progress: { 
+            step: "analysis", 
+            progress: 0, 
+            message: "无法确定题目数量，请重新上传或检查文件质量",
+            currentQuestion: 0,
+            totalQuestions: 0,
+            questionProgress: "题目数量未知"
+          }
+        });
+        setIsProcessing(false);
+        return;
       }
 
       // Stage 2: Detailed analysis with real question count
+      // At this point, actualQuestions is guaranteed to be non-null due to the check above
+      const questionCount = actualQuestions; // Type-safe assignment
       let currentQuestion = 0;
       
       updateStateAndSave({
         progress: { 
           step: "analysis", 
           progress: 10, 
-          message: `开始分析 ${actualQuestions} 题...`,
+          message: `开始分析 ${questionCount} 题...`,
           currentQuestion: 0,
-          totalQuestions: actualQuestions,
-          questionProgress: `准备分析 ${actualQuestions} 题`
+          totalQuestions: questionCount,
+          questionProgress: `准备分析 ${questionCount} 题`
         }
       });
 
@@ -363,13 +394,13 @@ export default function Home() {
       progressInterval = setInterval(() => {
         const elapsed = Date.now() - startTime;
         // 根据题目数量动态调整每题分析时间（2-4秒/题）
-        const timePerQuestion = Math.max(2000, Math.min(4000, 24000 / actualQuestions));
-        const newCurrentQuestion = Math.min(Math.floor(elapsed / timePerQuestion) + 1, actualQuestions);
+        const timePerQuestion = Math.max(2000, Math.min(4000, 24000 / questionCount));
+        const newCurrentQuestion = Math.min(Math.floor(elapsed / timePerQuestion) + 1, questionCount);
         
         if (newCurrentQuestion > currentQuestion) {
           currentQuestion = newCurrentQuestion;
           const baseProgress = 10;
-          const analysisProgress = (currentQuestion / actualQuestions) * 70; // 70% for analysis
+          const analysisProgress = (currentQuestion / questionCount) * 70; // 70% for analysis
           
           updateStateAndSave({
             progress: { 
@@ -377,8 +408,8 @@ export default function Home() {
               progress: baseProgress + analysisProgress, 
               message: `正在分析第 ${currentQuestion} 题...`,
               currentQuestion,
-              totalQuestions: actualQuestions,
-              questionProgress: `${currentQuestion}/${actualQuestions}`
+              totalQuestions: questionCount,
+              questionProgress: `${currentQuestion}/${questionCount}`
             }
           });
         }
@@ -413,20 +444,19 @@ export default function Home() {
       }
 
       // 验证题目数量准确性并纠正进度显示
-      const finalQuestions = analysisData.result.questionAnalysis?.length || actualQuestions;
-      if (finalQuestions !== actualQuestions) {
-        console.log(`Question count adjusted: ${actualQuestions} -> ${finalQuestions}`);
-        actualQuestions = finalQuestions;
+      const finalQuestions = analysisData.result.questionAnalysis?.length || questionCount;
+      if (finalQuestions !== questionCount) {
+        console.log(`Question count adjusted: ${questionCount} -> ${finalQuestions}`);
         
         // 重新计算并更新进度显示，纠正之前基于错误计数的进度
         updateStateAndSave({ 
           progress: { 
             step: "analysis", 
             progress: 85, 
-            message: `题目数量已纠正：实际 ${actualQuestions} 题`,
-            currentQuestion: actualQuestions,
-            totalQuestions: actualQuestions,
-            questionProgress: `${actualQuestions}/${actualQuestions}`
+            message: `题目数量已纠正：实际 ${finalQuestions} 题`,
+            currentQuestion: finalQuestions,
+            totalQuestions: finalQuestions,
+            questionProgress: `${finalQuestions}/${finalQuestions}`
           } 
         });
         
@@ -438,10 +468,10 @@ export default function Home() {
         progress: { 
           step: "analysis", 
           progress: 85, 
-          message: `分析完成！共 ${actualQuestions} 题`,
-          currentQuestion: actualQuestions,
-          totalQuestions: actualQuestions,
-          questionProgress: `${actualQuestions}/${actualQuestions}`
+          message: `分析完成！共 ${finalQuestions} 题`,
+          currentQuestion: finalQuestions,
+          totalQuestions: finalQuestions,
+          questionProgress: `${finalQuestions}/${finalQuestions}`
         } 
       });
 
@@ -505,7 +535,7 @@ export default function Home() {
       
       toast({
         title: "分析完成",
-        description: `试卷已成功分析，共 ${actualQuestions} 题！`,
+        description: `试卷已成功分析，共 ${finalQuestions} 题！`,
       });
     } catch (error) {
       // 清除进度定时器

@@ -82,8 +82,8 @@ async function countQuestionsWithOCR(imagePath: string, filename?: string): Prom
             // Skip empty lines
             if (!trimmedLine) continue;
             
-            // Pattern 1: Arabic numerals (1. 2. 3. or 1、2、3、or 1）2）3）)
-            const arabicMatch = trimmedLine.match(/^\s*(\d{1,3})[.、．)）]\s/);
+            // Pattern 1: Arabic numerals (1. 2. 3. or 1、2、3、or 1）2）3）) - relaxed whitespace
+            const arabicMatch = trimmedLine.match(/^\s*(\d{1,3})[.、．)）:：]\s*/);
             if (arabicMatch) {
                 const num = parseInt(arabicMatch[1]);
                 if (num >= 1 && num <= 200) {
