@@ -248,7 +248,7 @@ export default function Home() {
     
     setIsProcessing(true);
     let progressInterval: NodeJS.Timeout | null = null;
-    let actualQuestions = 8; // fallback
+    let actualQuestions = 5; // more reasonable fallback
     
     try {
       // Stage 1: Quick question count
@@ -274,13 +274,74 @@ export default function Home() {
           const countData = await countResponse.json();
           if (countData.success && typeof countData.questionCount === 'number') {
             actualQuestions = countData.questionCount;
-            console.log(`Stage 1: Detected ${actualQuestions} questions`);
+            console.log(`Stage 1: Detected ${actualQuestions} questions using ${countData.method} (confidence: ${countData.confidence})`);
+            
+            // Show appropriate message based on confidence and method
+            let countMessage = `检测到 ${actualQuestions} 题`;
+            if (countData.confidence === 'low') {
+              countMessage += ' (可信度较低)';
+            } else if (countData.method === 'ocr_regex') {
+              countMessage += ' (OCR识别)';
+            } else {
+              countMessage += ' (AI分析)';
+            }
+            
+            // Show warning if provided
+            if (countData.warning) {
+              toast({
+                title: "题目计数提醒",
+                description: countData.warning,
+                variant: "default",
+              });
+            }
+            
+            updateStateAndSave({
+              progress: { 
+                step: "analysis", 
+                progress: 8, 
+                message: countMessage,
+                currentQuestion: 0,
+                totalQuestions: actualQuestions,
+                questionProgress: `${countMessage}`
+              }
+            });
           }
+        } else if (countResponse.status === 422) {
+          // Count failed but request was valid
+          const errorData = await countResponse.json();
+          console.warn('Question counting failed:', errorData.warning || errorData.message);
+          
+          toast({
+            title: "题目计数失败",
+            description: errorData.message || "无法准确统计题目数量，将使用预估值进行分析",
+            variant: "destructive",
+          });
+          
+          updateStateAndSave({
+            progress: { 
+              step: "analysis", 
+              progress: 8, 
+              message: "题目计数不确定，使用预估值分析",
+              currentQuestion: 0,
+              totalQuestions: actualQuestions,
+              questionProgress: `预估 ${actualQuestions} 题 (计数不确定)`
+            }
+          });
         } else {
-          console.warn('Question counting failed, using fallback count');
+          console.warn('Question counting request failed, using fallback count');
+          toast({
+            title: "题目计数服务异常",
+            description: "无法连接计数服务，使用默认值继续分析",
+            variant: "destructive",
+          });
         }
       } catch (countError) {
         console.warn('Question counting error:', countError, 'using fallback count');
+        toast({
+          title: "题目计数错误",
+          description: "计数过程出现错误，使用默认值继续分析",
+          variant: "destructive",
+        });
       }
 
       // Stage 2: Detailed analysis with real question count
