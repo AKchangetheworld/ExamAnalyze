@@ -12,6 +12,53 @@ import { AnalysisResult, normalizeGrade } from "@shared/schema";
 // This API key is from Gemini Developer API Key, not vertex AI API Key
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
+// Helper function to validate Chinese-only content
+function validateChineseOnly(result: AnalysisResult): { isValid: boolean; englishFields: string[] } {
+    const englishFields: string[] = [];
+    
+    // Check all string fields for English content
+    const checkString = (value: string, fieldName: string) => {
+        // Check if string contains significant English letters (more than just occasional punctuation)
+        const englishLetters = value.match(/[a-zA-Z]/g);
+        if (englishLetters && englishLetters.length > 3) { // Allow a few English letters for abbreviations
+            englishFields.push(fieldName);
+        }
+    };
+    
+    // Check feedback fields
+    if (result.feedback.detailedFeedback) {
+        checkString(result.feedback.detailedFeedback, 'detailedFeedback');
+    }
+    
+    if (result.feedback.strengths) {
+        result.feedback.strengths.forEach((strength, index) => {
+            checkString(strength, `strengths[${index}]`);
+        });
+    }
+    
+    if (result.feedback.improvements) {
+        result.feedback.improvements.forEach((improvement, index) => {
+            checkString(improvement, `improvements[${index}]`);
+        });
+    }
+    
+    // Check question analysis fields
+    if (result.questionAnalysis) {
+        result.questionAnalysis.forEach((question, index) => {
+            checkString(question.feedback, `questionAnalysis[${index}].feedback`);
+            checkString(question.questionText, `questionAnalysis[${index}].questionText`);
+            checkString(question.userAnswer, `questionAnalysis[${index}].userAnswer`);
+            checkString(question.correctAnswer, `questionAnalysis[${index}].correctAnswer`);
+            checkString(question.explanation, `questionAnalysis[${index}].explanation`);
+        });
+    }
+    
+    return {
+        isValid: englishFields.length === 0,
+        englishFields
+    };
+}
+
 // Helper function to detect image MIME type from filename
 function getImageMimeType(filename: string): string {
     const ext = filename.toLowerCase().split(".").pop();
@@ -112,6 +159,8 @@ export async function analyzeExamPaper(
 
         const systemPrompt = `你是一个专业的试卷批改老师。请仔细分析这份试卷图片，提供详细的评分和反馈。
 
+【强制要求】：必须用中文回复！绝对禁止使用英文！所有反馈、解析、建议、评价都必须是中文！不允许任何英文单词或句子！
+
 请按照以下JSON格式返回分析结果：
 {
   "overallScore": 数字 (0-100),
@@ -144,7 +193,9 @@ export async function analyzeExamPaper(
 4. 提供具体、有建设性的反馈
 5. 评分要公正合理
 6. 反馈要鼓励学习进步
-7. 解析要包含知识点说明和解题方法`;
+7. 解析要包含知识点说明和解题方法
+
+再次强调：所有内容必须是中文！禁止英文！`;
 
         const contents = [
             {
@@ -231,6 +282,44 @@ export async function analyzeExamPaper(
 
         if (rawJson) {
             const result: AnalysisResult = JSON.parse(rawJson);
+
+            // Validate Chinese-only content and enforce correction if needed
+            const validation = validateChineseOnly(result);
+            if (!validation.isValid) {
+                console.warn(`English content detected in analysis result. Fields: ${validation.englishFields.join(', ')}`);
+                console.warn(`Attempting to correct English content to Chinese...`);
+                
+                // Attempt one corrective pass
+                try {
+                    const correctionPrompt = `将以下JSON中的所有字符串内容改写为中文，保持键名和结构不变，仅返回JSON。禁止使用英文：\n\n${rawJson}`;
+                    
+                    const correctionResponse = await ai.models.generateContent({
+                        model: "gemini-2.5-flash",
+                        config: {
+                            responseMimeType: "application/json",
+                        },
+                        contents: [correctionPrompt],
+                    });
+                    
+                    if (correctionResponse.text) {
+                        const correctedResult: AnalysisResult = JSON.parse(correctionResponse.text);
+                        const revalidation = validateChineseOnly(correctedResult);
+                        
+                        if (revalidation.isValid) {
+                            console.log('Successfully corrected English content to Chinese');
+                            correctedResult.grade = normalizeGrade(correctedResult.grade);
+                            return correctedResult;
+                        } else {
+                            console.warn('Correction attempt still contains English content');
+                        }
+                    }
+                } catch (correctionError) {
+                    console.error('Failed to correct English content:', correctionError);
+                }
+                
+                // If correction fails, we still return the original result but log the issue
+                console.warn('Proceeding with original result despite English content');
+            }
 
             // Normalize grade to ensure ASCII characters only (fixes mobile display issues)
             result.grade = normalizeGrade(result.grade);
@@ -329,6 +418,8 @@ export async function analyzeExamText(
     try {
         const systemPrompt = `你是一个专业的试卷批改老师。请仔细分析这份试卷内容，提供详细的评分和反馈。
 
+【强制要求】：必须用中文回复！绝对禁止使用英文！所有反馈、解析、建议、评价都必须是中文！不允许任何英文单词或句子！
+
 请按照以下JSON格式返回分析结果：
 {
   "overallScore": 数字 (0-100),
@@ -362,6 +453,8 @@ export async function analyzeExamText(
 5. 评分要公正合理
 6. 反馈要鼓励学习进步
 7. 解析要包含知识点说明和解题方法
+
+再次强调：所有内容必须是中文！禁止英文！
 
 试卷内容：
 ${textContent}`;
@@ -441,6 +534,44 @@ ${textContent}`;
 
         if (rawJson) {
             const result: AnalysisResult = JSON.parse(rawJson);
+
+            // Validate Chinese-only content and enforce correction if needed
+            const validation = validateChineseOnly(result);
+            if (!validation.isValid) {
+                console.warn(`English content detected in analysis result. Fields: ${validation.englishFields.join(', ')}`);
+                console.warn(`Attempting to correct English content to Chinese...`);
+                
+                // Attempt one corrective pass
+                try {
+                    const correctionPrompt = `将以下JSON中的所有字符串内容改写为中文，保持键名和结构不变，仅返回JSON。禁止使用英文：\n\n${rawJson}`;
+                    
+                    const correctionResponse = await ai.models.generateContent({
+                        model: "gemini-2.5-flash",
+                        config: {
+                            responseMimeType: "application/json",
+                        },
+                        contents: [correctionPrompt],
+                    });
+                    
+                    if (correctionResponse.text) {
+                        const correctedResult: AnalysisResult = JSON.parse(correctionResponse.text);
+                        const revalidation = validateChineseOnly(correctedResult);
+                        
+                        if (revalidation.isValid) {
+                            console.log('Successfully corrected English content to Chinese');
+                            correctedResult.grade = normalizeGrade(correctedResult.grade);
+                            return correctedResult;
+                        } else {
+                            console.warn('Correction attempt still contains English content');
+                        }
+                    }
+                } catch (correctionError) {
+                    console.error('Failed to correct English content:', correctionError);
+                }
+                
+                // If correction fails, we still return the original result but log the issue
+                console.warn('Proceeding with original result despite English content');
+            }
 
             // Normalize grade to ensure ASCII characters only (fixes mobile display issues)
             result.grade = normalizeGrade(result.grade);
