@@ -34,131 +34,17 @@ function getImageMimeType(filename: string): string {
     }
 }
 
-// Enhanced question counting result with metadata
-export interface QuestionCountResult {
-    count: number | null;
-    method: "llm" | "ocr_regex" | "unknown";
-    confidence: "high" | "medium" | "low";
-    warning?: string;
-}
-
-// Helper function to convert Chinese numerals to numbers
-function chineseNumeralToNumber(chinese: string): number | null {
-    const mapping: Record<string, number> = {
-        '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
-        '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
-        '十一': 11, '十二': 12, '十三': 13, '十四': 14, '十五': 15,
-        '十六': 16, '十七': 17, '十八': 18, '十九': 19, '二十': 20,
-        '二十一': 21, '二十二': 22, '二十三': 23, '二十四': 24, '二十五': 25,
-        '三十': 30, '四十': 40, '五十': 50
-    };
-    
-    return mapping[chinese] || null;
-}
-
-// OCR + Regex fallback for question counting
-async function countQuestionsWithOCR(imagePath: string, filename?: string): Promise<QuestionCountResult> {
-    try {
-        console.log("Using OCR fallback for question counting...");
-        
-        // Extract text using existing OCR function
-        const extractedText = await extractTextFromImage(imagePath, filename);
-        
-        if (!extractedText || extractedText.trim().length === 0) {
-            return {
-                count: null,
-                method: "ocr_regex",
-                confidence: "low",
-                warning: "OCR提取的文本为空"
-            };
-        }
-        
-        const lines = extractedText.split('\n');
-        const questionNumbers = new Set<number>();
-        
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            
-            // Skip empty lines
-            if (!trimmedLine) continue;
-            
-            // Pattern 1: Arabic numerals (1. 2. 3. or 1、2、3、or 1）2）3）) - relaxed whitespace
-            const arabicMatch = trimmedLine.match(/^\s*(\d{1,3})[.、．)）:：]\s*/);
-            if (arabicMatch) {
-                const num = parseInt(arabicMatch[1]);
-                if (num >= 1 && num <= 200) {
-                    // Check if this line contains sub-question indicators
-                    if (!trimmedLine.match(/[（(]\d+[）)]/)) {
-                        questionNumbers.add(num);
-                    }
-                }
-            }
-            
-            // Pattern 2: Chinese numerals (一、二、三、or 第一题、第二题)
-            const chineseMatch = trimmedLine.match(/^\s*(?:第)?(一|二|三|四|五|六|七|八|九|十|十[一二三四五六七八九]|二十[一二三四五六七八九]?|三十|四十|五十)(?:题|[、.．)）])/);
-            if (chineseMatch) {
-                const chineseNum = chineseNumeralToNumber(chineseMatch[1]);
-                if (chineseNum !== null && chineseNum >= 1 && chineseNum <= 50) {
-                    questionNumbers.add(chineseNum);
-                }
-            }
-        }
-        
-        const maxQuestion = questionNumbers.size > 0 ? Math.max(...Array.from(questionNumbers)) : 0;
-        const isSequential = questionNumbers.size > 0 && 
-            Array.from(questionNumbers).sort((a, b) => a - b).every((num, idx) => num === idx + 1);
-        
-        if (questionNumbers.size === 0) {
-            return {
-                count: null,
-                method: "ocr_regex",
-                confidence: "low",
-                warning: "未能识别到题目编号"
-            };
-        }
-        
-        // Use the maximum question number if sequence looks reasonable
-        const finalCount = isSequential ? maxQuestion : questionNumbers.size;
-        const confidence = isSequential && questionNumbers.size >= 2 ? "medium" : "low";
-        
-        console.log(`OCR fallback found ${finalCount} questions (method: ${isSequential ? 'sequential' : 'count'}, confidence: ${confidence})`);
-        
-        return {
-            count: finalCount,
-            method: "ocr_regex",
-            confidence,
-            warning: !isSequential ? "题目编号不连续，计数可能不准确" : undefined
-        };
-        
-    } catch (error) {
-        console.error("OCR fallback failed:", error);
-        return {
-            count: null,
-            method: "ocr_regex",
-            confidence: "low",
-            warning: "OCR分析失败"
-        };
-    }
-}
-
-// Enhanced question counting with retry and fallback
 export async function countQuestions(
     imagePath: string,
     filename?: string,
-): Promise<QuestionCountResult> {
-    const maxRetries = 2;
-    
-    // First, try LLM with structured response
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            console.log(`Attempting LLM question count (attempt ${attempt}/${maxRetries})`);
-            
-            const imageBytes = await fs.promises.readFile(imagePath);
-            const mimeType = filename ? getImageMimeType(filename) : "image/jpeg";
+): Promise<number> {
+    try {
+        const imageBytes = await fs.promises.readFile(imagePath);
+        const mimeType = filename ? getImageMimeType(filename) : "image/jpeg";
 
-            const systemPrompt = `你是一个专业的试卷题目计数助手。请快速扫描这份试卷，仅识别并计算主要题目（大题）的总数。
+        const systemPrompt = `你是一个专业的试卷题目计数助手。请快速扫描这份试卷，仅识别并计算主要题目（大题）的总数。
 
-请严格按照JSON格式返回结果：{"count": 数字}
+请只返回一个数字，表示试卷中主要题目的总数。不需要分析题目内容或提供其他信息。
 
 【重要规则】：
 1. 只计算顶级主要题目编号（如：1、2、3 或 一、二、三 或 第一题、第二题）
@@ -173,96 +59,46 @@ export async function countQuestions(
 - 答题卡上的选项编号
 - 说明文字中的编号
 
-【示例】：
-试卷有 "1. 选择题..." "2. 填空题..." "3. 解答题..." → 返回：{"count": 3}
-试卷有 "一、基础题..." "二、应用题..." → 返回：{"count": 2}
+【正确示例】：
+试卷显示："1. 选择题..." "2. 填空题..." "3. 解答题..." → 计算结果：3
+试卷显示："一、基础题..." "二、应用题..." → 计算结果：2
 
-只返回JSON格式：{"count": 数字}，不要包含其他文字。`;
+【错误示例】：
+不要把"2.(1)某物质..." "2.(2)计算..." 算作2道独立题目，这些都属于第2题的子题
 
-            const contents = [
-                {
-                    inlineData: {
-                        data: imageBytes.toString("base64"),
-                        mimeType: mimeType,
-                    },
+只返回数字，不要包含其他文字。`;
+
+        const contents = [
+            {
+                inlineData: {
+                    data: imageBytes.toString("base64"),
+                    mimeType: mimeType,
                 },
-                systemPrompt,
-            ];
+            },
+            systemPrompt,
+        ];
 
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "object",
-                        properties: {
-                            count: { 
-                                type: "integer", 
-                                minimum: 1, 
-                                maximum: 200 
-                            }
-                        },
-                        required: ["count"]
-                    }
-                },
-                contents: contents,
-            });
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: contents,
+        });
 
-            const responseText = (response.text || "").trim();
-            console.log(`LLM response (attempt ${attempt}): ${responseText}`);
-            
-            // Try to parse JSON response
-            let parsedResponse: { count: number };
-            try {
-                parsedResponse = JSON.parse(responseText);
-            } catch (parseError) {
-                // Fallback: try to extract number from response
-                const numberMatch = responseText.match(/\d+/);
-                if (numberMatch) {
-                    parsedResponse = { count: parseInt(numberMatch[0]) };
-                } else {
-                    throw new Error(`Invalid JSON response: ${responseText}`);
-                }
-            }
-            
-            const questionCount = parsedResponse.count;
-            
-            // Validation: ensure we got a reasonable number
-            if (isNaN(questionCount) || questionCount < 1 || questionCount > 200) {
-                throw new Error(`Invalid question count: ${questionCount}`);
-            }
-            
-            console.log(`LLM successfully counted ${questionCount} questions`);
-            return {
-                count: questionCount,
-                method: "llm",
-                confidence: "high"
-            };
-            
-        } catch (error) {
-            console.warn(`LLM count attempt ${attempt} failed:`, error);
-            
-            // If not the last attempt, wait before retrying
-            if (attempt < maxRetries) {
-                const delay = Math.pow(2, attempt) * 400; // 400ms, 800ms
-                console.log(`Waiting ${delay}ms before retry...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            }
+        const responseText = (response.text || "").trim();
+        const questionCount = parseInt(responseText);
+        
+        // Validation: ensure we got a reasonable number
+        if (isNaN(questionCount) || questionCount < 1 || questionCount > 100) {
+            console.warn(`Invalid question count response: "${responseText}". Using default count of 8.`);
+            return 8; // fallback to original default
         }
+        
+        console.log(`Counted ${questionCount} questions in the exam paper`);
+        return questionCount;
+    } catch (error) {
+        console.error("Failed to count questions:", error);
+        // Return fallback count on error
+        return 8;
     }
-    
-    // If LLM failed, try OCR + regex fallback
-    console.log("LLM counting failed, trying OCR fallback...");
-    return await countQuestionsWithOCR(imagePath, filename);
-}
-
-// Legacy function for backward compatibility
-export async function countQuestionsLegacy(
-    imagePath: string,
-    filename?: string,
-): Promise<number> {
-    const result = await countQuestions(imagePath, filename);
-    return result.count || 1; // Return 1 as minimum if unable to count
 }
 
 export async function analyzeExamPaper(

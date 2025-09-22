@@ -6,7 +6,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { analyzeExamPaper, extractTextFromImage, extractTextFromPDF, analyzeExamText, countQuestions } from "./gemini";
-import { insertExamPaperSchema, WrongQuestion, WrongQuestionClassification, QuestionCountResult } from "@shared/schema";
+import { insertExamPaperSchema, WrongQuestion, WrongQuestionClassification } from "@shared/schema";
 // Configure multer for file uploads
 const upload = multer({
   dest: 'uploads/',
@@ -162,32 +162,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const filePath = examPaper.filePath;
       
-      // Count questions using enhanced AI counting with metadata
-      const countResult: QuestionCountResult = await countQuestions(filePath, examPaper.filename);
+      // Count questions using fast AI counting
+      const questionCount = await countQuestions(filePath, examPaper.filename);
       
-      console.log(`Enhanced count result:`, countResult);
+      console.log(`Quick count: Found ${questionCount} questions in exam paper ${id}`);
 
-      if (countResult.count !== null) {
-        // Successful count
-        res.json({ 
-          success: true, 
-          questionCount: countResult.count,
-          method: countResult.method,
-          confidence: countResult.confidence,
-          warning: countResult.warning,
-          message: `检测到 ${countResult.count} 题 (${countResult.method === 'llm' ? 'AI分析' : 'OCR识别'}, 可信度: ${countResult.confidence})`
-        });
-      } else {
-        // Count failed but request was valid
-        res.status(422).json({ 
-          success: false,
-          error: '无法准确统计题目数量',
-          method: countResult.method,
-          confidence: countResult.confidence,
-          warning: countResult.warning,
-          message: countResult.warning || '题目计数失败，请检查文件质量或手动输入题目数量'
-        });
-      }
+      res.json({ 
+        success: true, 
+        questionCount,
+        message: `检测到 ${questionCount} 题`
+      });
     } catch (error) {
       console.error('Question counting error:', error);
       
