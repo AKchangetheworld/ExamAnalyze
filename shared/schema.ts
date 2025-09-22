@@ -109,6 +109,14 @@ export interface WrongQuestionClassification {
   };
 }
 
+// Enhanced question counting result with metadata
+export interface QuestionCountResult {
+    count: number | null;
+    method: "llm" | "ocr_regex" | "unknown";
+    confidence: "high" | "medium" | "low";
+    warning?: string;
+}
+
 // Helper function to normalize grade strings (fixes Unicode variant issues)
 export function normalizeGrade(grade: string): ValidGrade {
   if (!grade) return 'F';
