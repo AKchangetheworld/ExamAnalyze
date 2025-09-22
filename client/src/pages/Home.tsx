@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ProcessingStep, UploadProgress, AnalysisResult } from "@shared/schema";
 import Header from "@/components/Header";
 import FileUpload from "@/components/FileUpload";
@@ -28,6 +28,17 @@ export default function Home() {
 
   // SessionStorage key for persistence
   const STORAGE_KEY = 'exam-analysis-state';
+  
+  // Keep a reference to the last saved state to prevent race conditions
+  const lastSavedStateRef = useRef<{
+    appState: AppState;
+    currentStep: ProcessingStep;
+    progress: UploadProgress;
+    examPaperId: string | null;
+    results: AnalysisResult | null;
+    imagePreviewUrl: string | null;
+    serverImageUrl: string | null;
+  } | null>(null);
 
   // Save state to sessionStorage
   const saveStateToStorage = (state: {
@@ -94,22 +105,37 @@ export default function Home() {
     if (newState.imagePreviewUrl !== undefined) setImagePreviewUrl(newState.imagePreviewUrl);
     if (newState.serverImageUrl !== undefined) setServerImageUrl(newState.serverImageUrl);
 
-    // Save complete state
-    const currentState = {
-      appState: newState.appState ?? appState,
-      currentStep: newState.currentStep ?? currentStep,
-      progress: newState.progress ?? progress,
-      examPaperId: newState.examPaperId ?? examPaperId,
-      results: newState.results ?? results,
-      imagePreviewUrl: newState.imagePreviewUrl ?? imagePreviewUrl,
-      serverImageUrl: newState.serverImageUrl ?? serverImageUrl,
+    // Build the state to save by merging with last saved state to prevent race conditions
+    // This ensures critical values like serverImageUrl and examPaperId are never lost
+    const lastSaved = lastSavedStateRef.current || {
+      appState: appState,
+      currentStep: currentStep,
+      progress: progress,
+      examPaperId: examPaperId,
+      results: results,
+      imagePreviewUrl: imagePreviewUrl,
+      serverImageUrl: serverImageUrl,
+    };
+    
+    const stateToSave = {
+      appState: newState.appState ?? lastSaved.appState,
+      currentStep: newState.currentStep ?? lastSaved.currentStep,
+      progress: newState.progress ?? lastSaved.progress,
+      examPaperId: newState.examPaperId ?? lastSaved.examPaperId,
+      results: newState.results ?? lastSaved.results,
+      imagePreviewUrl: newState.imagePreviewUrl ?? lastSaved.imagePreviewUrl,
+      serverImageUrl: newState.serverImageUrl ?? lastSaved.serverImageUrl,
     };
     
     // Save state for uploading, processing, completed, and error states
     // Only clear state when explicitly requested (forceClear) or transitioning to idle
-    if (currentState.appState === 'uploading' || currentState.appState === 'processing' || currentState.appState === 'completed' || currentState.appState === 'error') {
-      saveStateToStorage(currentState);
-    } else if (currentState.appState === 'idle' || forceClear) {
+    if (stateToSave.appState === 'uploading' || stateToSave.appState === 'processing' || stateToSave.appState === 'completed' || stateToSave.appState === 'error') {
+      // Update the reference before saving
+      lastSavedStateRef.current = stateToSave;
+      saveStateToStorage(stateToSave);
+    } else if (stateToSave.appState === 'idle' || forceClear) {
+      // Clear both storage and reference
+      lastSavedStateRef.current = null;
       clearSavedState();
     }
   };
@@ -156,21 +182,28 @@ export default function Home() {
     if (savedState && (savedState.examPaperId || savedState.appState === 'completed')) {
       console.log('🔄 Restoring saved state:', savedState);
       
+      // Initialize the reference with the restored state
+      lastSavedStateRef.current = savedState;
+      
       // Restore all state values
       setAppState(savedState.appState);
       setCurrentStep(savedState.currentStep);
       setProgress(savedState.progress);
       setExamPaperId(savedState.examPaperId);
       setResults(savedState.results);
-      if (savedState.imagePreviewUrl) {
-        setImagePreviewUrl(savedState.imagePreviewUrl);
-      }
+      
+      // Handle image URL restoration with improved logic
       if (savedState.serverImageUrl) {
+        console.log('📸 Restoring serverImageUrl:', savedState.serverImageUrl);
         setServerImageUrl(savedState.serverImageUrl);
-        // If we have a server image URL but no preview URL, use the server URL for preview
-        if (!savedState.imagePreviewUrl) {
-          setImagePreviewUrl(savedState.serverImageUrl);
-        }
+        
+        // Always use server URL for preview when restoring (since blob URLs are gone)
+        console.log('📸 Setting imagePreviewUrl to serverImageUrl for display');
+        setImagePreviewUrl(savedState.serverImageUrl);
+      } else if (savedState.imagePreviewUrl) {
+        // Fallback for legacy saved states that might have imagePreviewUrl
+        console.log('📸 Restoring legacy imagePreviewUrl:', savedState.imagePreviewUrl);
+        setImagePreviewUrl(savedState.imagePreviewUrl);
       }
       
       // Don't automatically resume processing - let user decide
@@ -182,8 +215,9 @@ export default function Home() {
           description: "检测到未完成的分析任务，您可以点击重试分析按钮继续",
         });
         
-        // Set state to error so user can manually retry
+        // Set state to error so user can manually retry and keep sessionStorage consistent
         setAppState('error');
+        updateStateAndSave({ appState: 'error' });
       }
     }
   }, []);
